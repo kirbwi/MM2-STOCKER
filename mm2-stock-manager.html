@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>MM2 Stock Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Rajdhani',sans-serif;min-height:100vh;padding-bottom:90px;transition:background .2s,color .2s;}
+  ::-webkit-scrollbar{width:4px;}
+  ::-webkit-scrollbar-thumb{border-radius:4px;}
+  input[type=number]::-webkit-inner-spin-button{opacity:.3;}
+  button{font-family:'Rajdhani',sans-serif;cursor:pointer;}
+  input,select,textarea{font-family:'Rajdhani',sans-serif;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// ─── DEFAULTS ───────────────────────────────────────────────────────────────
+const DEFAULT_CATEGORIES = ["Season 1","Classic","Holiday"];
+const DEFAULT_SECTIONS   = ["Low","Tier 1 Low Godlies","Sets","Chromas"];
+const DEFAULT_ITEMS = [
+  {id:"s1_1",name:"Harvester",   category:"Season 1",section:"Low",              price:225,notes:"",order:1,stock:0},
+  {id:"s1_2",name:"Icepiercer", category:"Season 1",section:"Low",              price:165,notes:"",order:2,stock:0},
+  {id:"s1_3",name:"Bat",        category:"Season 1",section:"Low",              price:180,notes:"",order:3,stock:0},
+  {id:"s1_4",name:"Elderwood",  category:"Season 1",section:"Tier 1 Low Godlies",price:450,notes:"",order:4,stock:0},
+  {id:"s1_5",name:"Icebreaker", category:"Season 1",section:"Tier 1 Low Godlies",price:500,notes:"",order:5,stock:0},
+  {id:"cl_1",name:"Corrupt",    category:"Classic",  section:"Low",              price:200,notes:"",order:1,stock:0},
+  {id:"cl_2",name:"Ghostblade", category:"Classic",  section:"Low",              price:175,notes:"",order:2,stock:0},
+  {id:"cl_3",name:"Darkblade",  category:"Classic",  section:"Tier 1 Low Godlies",price:480,notes:"",order:3,stock:0},
+  {id:"cl_4",name:"Luger",      category:"Classic",  section:"Sets",             price:350,notes:"",order:4,stock:0},
+  {id:"cl_5",name:"Chroma Luger",category:"Classic", section:"Chromas",          price:900,notes:"",order:5,stock:0},
+  {id:"ho_1",name:"Pumpkin",    category:"Holiday",  section:"Low",              price:190,notes:"",order:1,stock:0},
+  {id:"ho_2",name:"Candy Cane", category:"Holiday",  section:"Low",              price:160,notes:"",order:2,stock:0},
+  {id:"ho_3",name:"Holiday Scythe",category:"Holiday",section:"Tier 1 Low Godlies",price:520,notes:"",order:3,stock:0},
+  {id:"ho_4",name:"Chroma Holiday Scythe",category:"Holiday",section:"Chromas",  price:950,notes:"",order:4,stock:0},
+];
+
+const PALETTES = {
+  yellow:{name:"🟡 Yellow",  accent:"#e2ff6e",accentDark:"#b8d44a",accentText:"#1a1a0e"},
+  blue:  {name:"🔵 Blue",    accent:"#6eb4ff",accentDark:"#4a8fd4",accentText:"#0a0f1a"},
+  green: {name:"🟢 Green",   accent:"#6effa0",accentDark:"#4ad47a",accentText:"#0a1a10"},
+  red:   {name:"🔴 Red",     accent:"#ff6e6e",accentDark:"#d44a4a",accentText:"#1a0a0a"},
+  purple:{name:"🟣 Purple",  accent:"#c06eff",accentDark:"#9a4ad4",accentText:"#100a1a"},
+  orange:{name:"🟠 Orange",  accent:"#ffaa6e",accentDark:"#d48a4a",accentText:"#1a0f0a"},
+  gray:  {name:"⚫ Gray",    accent:"#c8c8c8",accentDark:"#a0a0a0",accentText:"#0f0f0f"},
+};
+
+const BOLD_MAP={A:"𝐀",B:"𝐁",C:"𝐂",D:"𝐃",E:"𝐄",F:"𝐅",G:"𝐆",H:"𝐇",I:"𝐈",J:"𝐉",K:"𝐊",L:"𝐋",M:"𝐌",N:"𝐍",O:"𝐎",P:"𝐏",Q:"𝐐",R:"𝐑",S:"𝐒",T:"𝐓",U:"𝐔",V:"𝐕",W:"𝐖",X:"𝐗",Y:"𝐘",Z:"𝐙",a:"𝐚",b:"𝐛",c:"𝐜",d:"𝐝",e:"𝐞",f:"𝐟",g:"𝐠",h:"𝐡",i:"𝐢",j:"𝐣",k:"𝐤",l:"𝐥",m:"𝐦",n:"𝐧",o:"𝐨",p:"𝐩",q:"𝐪",r:"𝐫",s:"𝐬",t:"𝐭",u:"𝐮",v:"𝐯",w:"𝐰",x:"𝐱",y:"𝐲",z:"𝐳","0":"𝟎","1":"𝟏","2":"𝟐","3":"𝟑","4":"𝟒","5":"𝟓","6":"𝟔","7":"𝟕","8":"𝟖","9":"𝟗"};
+function toBoldUnicode(str){return str.split("").map(c=>BOLD_MAP[c]||c).join("");}
+
+// ─── STORAGE ────────────────────────────────────────────────────────────────
+function ls(key,fb){try{const v=localStorage.getItem(key);return v?JSON.parse(v):fb;}catch{return fb;}}
+function lsSet(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch{}}
+function genId(){return"i_"+Math.random().toString(36).slice(2,9);}
+
+// ─── SORT ───────────────────────────────────────────────────────────────────
+function sortSection(items,method){
+  const arr=[...items];
+  if(method==="priceHL")return arr.sort((a,b)=>b.price-a.price);
+  if(method==="priceLH")return arr.sort((a,b)=>a.price-b.price);
+  if(method==="az")return arr.sort((a,b)=>a.name.localeCompare(b.name));
+  if(method==="za")return arr.sort((a,b)=>b.name.localeCompare(a.name));
+  return arr.sort((a,b)=>a.order-b.order);
+}
+
+// ─── STOCK LIST ─────────────────────────────────────────────────────────────
+function generateStockList(items,sections,sectionSort){
+  const header=`𝗙𝗢𝗥 𝗦𝗔𝗟𝗘 MM2 ITEMS❗\n𝗚𝗢𝗗𝗟𝗜𝗘𝗦 𝗙𝗢𝗥 𝗚𝗖𝗔𝗦𝗛\n[ 𝐋𝐎𝐀𝐃 : 𝐀𝐃𝐃 30% ]\n@ me for faster notice\n\nx0 = NO STOCK\nItem [Price] x = Quantity\n`;
+  const footer=`\nPM / DM for direct notice\nWtu mm / mw (ADMODS)`;
+  let body="";
+  for(const sec of sections){
+    const method=sectionSort[sec]||"manual";
+    const secItems=sortSection(items.filter(i=>i.section===sec),method);
+    if(!secItems.length)continue;
+    body+=`\n${toBoldUnicode(sec.toUpperCase())}\n\n`;
+    for(const item of secItems)body+=`${item.name} [${item.price}] x${item.stock}\n`;
+  }
+  return header+body+footer;
+}
+
+// ─── STATE ──────────────────────────────────────────────────────────────────
+const state={
+  items:      ls("mm2_items_v3",DEFAULT_ITEMS),
+  categories: ls("mm2_cats_v3",DEFAULT_CATEGORIES),
+  sections:   ls("mm2_secs_v3",DEFAULT_SECTIONS),
+  sectionSort:ls("mm2_sort_v3",{}),
+  theme:      ls("mm2_theme","yellow"),
+  dark:       ls("mm2_dark",true),
+  page:       "inventory",
+  invTab:     null,
+  search:     "",
+  stockText:  "",
+  prevStocks: {},
+  history:    [],
+  toast:      "",
+  toastTimer: null,
+  editItem:   null,  // null | "new" | item obj
+  quickSearch:"",
+  quickItem:  null,
+  quickVal:   0,
+  dragId:     null,
+  collapsed:  {},
+  listDragIdx:null,
+  listDragType:null,  // "cats"|"secs"
+  renamingCatIdx:null,
+  renamingSecIdx:null,
+  renameCatVal:"",
+  renameSecVal:"",
+  addingCat:  false,
+  addingSec:  false,
+  newCatName: "",
+  newSecName: "",
+};
+
+// fix invTab after load
+if(!state.invTab||!state.categories.includes(state.invTab))
+  state.invTab=state.categories[0]||null;
+
+// ─── THEME HELPERS ───────────────────────────────────────────────────────────
+function S(){
+  const t=state.theme, dark=state.dark;
+  const bg0=dark?"#0b0b08":"#f5f5ee";
+  const bg1=dark?"#141410":"#ebebdf";
+  const bg2=dark?"#1c1c14":"#e0e0d2";
+  const bg3=dark?"#252518":"#d4d4c4";
+  const txt=dark?"#f0f0e0":"#1a1a10";
+  const txt2=dark?"#999990":"#666655";
+  const a=PALETTES[t].accent;
+  const bdr=a+(dark?"22":"44");
+  const aT=PALETTES[t].accentText;
+  return{bg0,bg1,bg2,bg3,txt,txt2,bdr,a,aT};
+}
+
+// ─── RENDER ENGINE ───────────────────────────────────────────────────────────
+function h(tag,attrs,...children){
+  const el=document.createElement(tag);
+  if(attrs)for(const[k,v]of Object.entries(attrs)){
+    if(k==="style"&&typeof v==="object"){Object.assign(el.style,v);}
+    else if(k.startsWith("on"))el.addEventListener(k.slice(2).toLowerCase(),v);
+    else if(k==="className")el.className=v;
+    else el.setAttribute(k,v);
+  }
+  for(const c of children.flat()){
+    if(c==null||c===false)continue;
+    el.appendChild(typeof c==="string"||typeof c==="number"?document.createTextNode(String(c)):c);
+  }
+  return el;
+}
+
+function persist(){
+  lsSet("mm2_items_v3",state.items);
+  lsSet("mm2_cats_v3",state.categories);
+  lsSet("mm2_secs_v3",state.sections);
+  lsSet("mm2_sort_v3",state.sectionSort);
+  lsSet("mm2_theme",state.theme);
+  lsSet("mm2_dark",state.dark);
+}
+
+function setToast(msg){
+  state.toast=msg;
+  if(state.toastTimer)clearTimeout(state.toastTimer);
+  state.toastTimer=setTimeout(()=>{state.toast="";render();},2500);
+  render();
+}
+
+function render(){
+  persist();
+  const app=document.getElementById("app");
+  app.innerHTML="";
+  app.appendChild(buildApp());
+}
+
+// ─── STYLE HELPERS ───────────────────────────────────────────────────────────
+function mkBtn(a,aT){return{width:"38px",height:"38px",borderRadius:"8px",background:a,color:aT,border:"none",fontSize:"20px",fontWeight:"900",cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",touchAction:"manipulation",userSelect:"none",flexShrink:"0",lineHeight:"1"};}
+function mkInp(s){return{background:s.bg1,color:s.txt,border:`1.5px solid ${s.bdr}`,borderRadius:"8px",padding:"8px 10px",fontSize:"14px",outline:"none",width:"100%",boxSizing:"border-box"};}
+
+// ─── TOAST ──────────────────────────────────────────────────────────────────
+function buildToast(s){
+  return h("div",{style:{position:"fixed",bottom:"88px",left:"50%",transform:"translateX(-50%)",background:s.a,color:"#111",padding:"10px 24px",borderRadius:"10px",fontWeight:"800",fontSize:"14px",zIndex:"9999",whiteSpace:"nowrap",boxShadow:"0 4px 24px #0009",letterSpacing:"0.3px"}},state.toast);
+}
+
+// ─── ITEM CARD ───────────────────────────────────────────────────────────────
+function buildItemCard(item,s,editing,editDraft){
+  const a=s.a, aT=s.aT;
+  const isEditing=editing===item.id;
+
+  function stockBtn(delta){
+    return h("button",{style:mkBtn(a,aT),onClick(){
+      state.items=state.items.map(i=>i.id===item.id?{...i,stock:Math.max(0,i.stock+delta)}:i);
+      render();
+    }},delta>0?"+":"−");
+  }
+
+  const stockInput=h("input",{
+    type:"number",value:String(item.stock),
+    style:{width:"50px",textAlign:"center",background:s.bg1,color:a,border:`1.5px solid ${a}44`,borderRadius:"8px",fontSize:"17px",fontWeight:"700",padding:"6px 0",outline:"none"},
+  });
+  stockInput.addEventListener("blur",e=>{
+    const n=Math.max(0,parseInt(e.target.value)||0);
+    state.items=state.items.map(i=>i.id===item.id?{...i,stock:n}:i);
+    render();
+  });
+  stockInput.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){
+      const n=Math.max(0,parseInt(stockInput.value)||0);
+      state.items=state.items.map(i=>i.id===item.id?{...i,stock:n}:i);
+      render();
+    }
+  });
+
+  const topRow=h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"8px"}},
+    h("div",{style:{flex:"1",minWidth:"0"}},
+      h("div",{style:{fontWeight:"700",fontSize:"15px",color:a,letterSpacing:"0.3px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},item.name),
+      h("div",{style:{fontSize:"12px",color:s.txt2,marginTop:"2px"}},
+        item.section," · ",h("span",{style:{color:a+"aa"}},"GC "+item.price)
+      )
+    ),
+    h("div",{style:{display:"flex",alignItems:"center",gap:"0"}},
+      stockBtn(-1), stockInput, stockBtn(1)
+    )
+  );
+
+  const metaRow=h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:"7px"}},
+    h("div",{style:{fontSize:"12px",color:s.txt2}},
+      "Stock: ",h("span",{style:{color:a,fontWeight:"700"}},String(item.stock)),
+      item.notes?h("span",{style:{marginLeft:"8px",color:s.txt2+"99"}},item.notes):null
+    ),
+    h("button",{
+      style:{background:"transparent",border:`1px solid ${a}44`,color:a,borderRadius:"7px",padding:"3px 10px",cursor:"pointer",fontSize:"11px",fontWeight:"700"},
+      onClick(){
+        state._editingCardId=isEditing?null:item.id;
+        state._editDraft={name:item.name,price:item.price,category:item.category,section:item.section,notes:item.notes||""};
+        render();
+      }
+    },"✎ Edit")
+  );
+
+  const children=[topRow,metaRow];
+
+  if(isEditing){
+    const d=state._editDraft;
+    function fi(label,key,type="text"){
+      const inp=h("input",{type,value:String(d[key]||""),style:mkInp(s)});
+      inp.addEventListener("input",e=>{state._editDraft={...state._editDraft,[key]:e.target.value};});
+      return h("div",{style:{display:"flex",flexDirection:"column",gap:"3px",marginBottom:"9px"}},
+        h("label",{style:{fontSize:"11px",fontWeight:"700",color:"#888",letterSpacing:"0.5px",textTransform:"uppercase"}},label),
+        inp
+      );
+    }
+    function fsel(label,key,opts){
+      const sel=h("select",{style:mkInp(s)},...opts.map(o=>{const opt=h("option",{value:o},o);if(d[key]===o)opt.selected=true;return opt;}));
+      sel.addEventListener("change",e=>{state._editDraft={...state._editDraft,[key]:e.target.value};});
+      return h("div",{style:{display:"flex",flexDirection:"column",gap:"3px",marginBottom:"9px"}},
+        h("label",{style:{fontSize:"11px",fontWeight:"700",color:"#888",letterSpacing:"0.5px",textTransform:"uppercase"}},label),
+        sel
+      );
+    }
+    const panel=h("div",{style:{marginTop:"12px",borderTop:`1px solid ${s.bdr}`,paddingTop:"12px"}},
+      fi("Name","name"),fi("Price","price","number"),
+      fsel("Category","category",state.categories),
+      fsel("Section","section",state.sections),
+      fi("Notes","notes"),
+      h("div",{style:{display:"flex",gap:"8px",marginTop:"8px"}},
+        h("button",{style:{...mkBtn(a,aT),flex:"1",borderRadius:"9px",height:"38px",fontSize:"13px",fontWeight:"800",width:"auto"},
+          onClick(){
+            const patch={...state._editDraft,price:Number(state._editDraft.price)||0};
+            state.items=state.items.map(i=>i.id===item.id?{...i,...patch}:i);
+            state._editingCardId=null;
+            render();
+          }},"Save Changes"),
+        h("button",{style:{flex:"1",borderRadius:"9px",height:"38px",fontSize:"13px",fontWeight:"700",background:"transparent",color:s.txt2,border:`1px solid ${s.bdr}`,cursor:"pointer"},
+          onClick(){state._editingCardId=null;render();}},"Cancel")
+      )
+    );
+    children.push(panel);
+  }
+
+  const card=h("div",{
+    draggable:"true",
+    style:{background:state.dragId===item.id?s.bg3:s.bg2,border:`1.5px solid ${s.bdr}`,borderRadius:"12px",padding:"12px 14px",marginBottom:"10px",opacity:state.dragId===item.id?"0.5":"1",transition:"background 0.15s"}
+  },...children);
+  card.addEventListener("dragstart",()=>{state.dragId=item.id;});
+  card.addEventListener("dragover",e=>e.preventDefault());
+  card.addEventListener("drop",()=>{
+    if(!state.dragId||state.dragId===item.id){state.dragId=null;return;}
+    const cat=state.invTab;
+    const catItems=state.items.filter(i=>i.category===cat).sort((a,b)=>a.order-b.order);
+    const fromIdx=catItems.findIndex(i=>i.id===state.dragId);
+    const toIdx=catItems.findIndex(i=>i.id===item.id);
+    if(fromIdx<0||toIdx<0){state.dragId=null;return;}
+    const arr=[...catItems];const[m]=arr.splice(fromIdx,1);arr.splice(toIdx,0,m);
+    const orders={};arr.forEach((it,i)=>orders[it.id]=i+1);
+    state.items=state.items.map(i=>orders[i.id]!==undefined?{...i,order:orders[i.id]}:i);
+    state.dragId=null;
+    render();
+  });
+  return card;
+}
+
+// ─── LIST EDITOR ─────────────────────────────────────────────────────────────
+function buildListEditor(title,items,type,s){
+  const a=s.a, aT=s.aT;
+  const adding=type==="cats"?state.addingCat:state.addingSec;
+  const newName=type==="cats"?state.newCatName:state.newSecName;
+  const renamingIdx=type==="cats"?state.renamingCatIdx:state.renamingSecIdx;
+  const renameVal=type==="cats"?state.renameCatVal:state.renameSecVal;
+
+  function setAdding(v){type==="cats"?state.addingCat=v:state.addingSec=v;render();}
+  function setNewName(v){type==="cats"?state.newCatName=v:state.newSecName=v;}
+  function setRenamingIdx(v){type==="cats"?state.renamingCatIdx=v:state.renamingSecIdx=v;render();}
+  function setRenameVal(v){type==="cats"?state.renameCatVal=v:state.renameSecVal=v;}
+
+  function doAdd(){
+    const name=newName.trim();
+    if(!name)return;
+    if(type==="cats"){
+      if(state.categories.includes(name)){setToast("Already exists.");return;}
+      state.categories=[...state.categories,name];
+      state.newCatName="";state.addingCat=false;
+    }else{
+      if(state.sections.includes(name)){setToast("Already exists.");return;}
+      state.sections=[...state.sections,name];
+      state.newSecName="";state.addingSec=false;
+    }
+    setToast(type==="cats"?"Category added!":"Section added!");
+  }
+
+  function doRename(idx){
+    const name=(type==="cats"?state.renameCatVal:state.renameSecVal).trim();
+    if(!name)return;
+    if(type==="cats"){
+      const old=state.categories[idx];
+      state.categories[idx]=name;
+      state.items=state.items.map(i=>i.category===old?{...i,category:name}:i);
+      state.renamingCatIdx=null;
+      setToast(`Category renamed to "${name}"`);
+    }else{
+      const old=state.sections[idx];
+      state.sections[idx]=name;
+      state.items=state.items.map(i=>i.section===old?{...i,section:name}:i);
+      const ss={...state.sectionSort};
+      if(ss[old]!==undefined){ss[name]=ss[old];delete ss[old];}
+      state.sectionSort=ss;
+      state.renamingSecIdx=null;
+      setToast(`Section renamed to "${name}"`);
+    }
+    render();
+  }
+
+  function doDelete(idx){
+    if(type==="cats"){
+      const name=state.categories[idx];
+      if(!confirm(`Delete category "${name}"? Items inside will become uncategorized.`))return;
+      state.categories=state.categories.filter((_,i)=>i!==idx);
+      state.items=state.items.map(i=>i.category===name?{...i,category:"Uncategorized"}:i);
+      setToast(`Category "${name}" deleted.`);
+    }else{
+      const name=state.sections[idx];
+      if(!confirm(`Delete section "${name}"? Items inside will become unsectioned.`))return;
+      state.sections=state.sections.filter((_,i)=>i!==idx);
+      state.items=state.items.map(i=>i.section===name?{...i,section:"Unsorted"}:i);
+      setToast(`Section "${name}" deleted.`);
+    }
+    render();
+  }
+
+  function dropOn(toIdx){
+    const dragIdx=state.listDragIdx;
+    if(dragIdx==null||dragIdx===toIdx){state.listDragIdx=null;return;}
+    if(type==="cats"){
+      const arr=[...state.categories];const[m]=arr.splice(dragIdx,1);arr.splice(toIdx,0,m);state.categories=arr;
+    }else{
+      const arr=[...state.sections];const[m]=arr.splice(dragIdx,1);arr.splice(toIdx,0,m);state.sections=arr;
+    }
+    state.listDragIdx=null;render();
+  }
+
+  const rows=items.map((item,idx)=>{
+    const isRenaming=renamingIdx===idx;
+    let inner;
+    if(isRenaming){
+      const ri=h("input",{style:{...mkInp(s),flex:"1",padding:"4px 8px"},value:renameVal,autofocus:"true"});
+      ri.addEventListener("input",e=>{setRenameVal(e.target.value);});
+      ri.addEventListener("keydown",e=>{if(e.key==="Enter")doRename(idx);});
+      setTimeout(()=>ri.focus(),10);
+      inner=[
+        ri,
+        h("button",{style:{...mkBtn(a,aT),width:"30px",height:"30px",borderRadius:"6px",fontSize:"14px"},onClick(){doRename(idx);}},"✓"),
+        h("button",{style:{background:"transparent",border:"none",color:s.txt2,cursor:"pointer",fontSize:"16px",padding:"0 4px"},onClick(){setRenamingIdx(null);}},"✕"),
+      ];
+    }else{
+      inner=[
+        h("span",{style:{flex:"1",fontWeight:"600",color:s.txt,fontSize:"14px"}},item),
+        h("button",{style:{background:"transparent",border:`1px solid ${a}44`,color:a,borderRadius:"6px",padding:"3px 10px",cursor:"pointer",fontSize:"12px",fontWeight:"700"},
+          onClick(){setRenamingIdx(idx);setRenameVal(item);}},"Rename"),
+        h("button",{style:{background:"transparent",border:"1px solid #ff6e6e44",color:"#ff6e6e",borderRadius:"6px",padding:"3px 8px",cursor:"pointer",fontSize:"12px",fontWeight:"700"},
+          onClick(){doDelete(idx);}},"✕"),
+      ];
+    }
+    const row=h("div",{
+      draggable:"true",
+      style:{background:s.bg2,border:`1px solid ${s.bdr}`,borderRadius:"9px",padding:"10px 12px",marginBottom:"6px",display:"flex",alignItems:"center",gap:"8px",cursor:"grab",opacity:state.listDragIdx===idx?"0.4":"1"}
+    },h("span",{style:{color:s.txt2,fontSize:"16px",cursor:"grab"}},"⠿"),...inner);
+    row.addEventListener("dragstart",()=>{state.listDragIdx=idx;});
+    row.addEventListener("dragover",e=>e.preventDefault());
+    row.addEventListener("drop",()=>dropOn(idx));
+    return row;
+  });
+
+  let addingPanel=null;
+  if(adding){
+    const ni=h("input",{style:{...mkInp(s),flex:"1"},placeholder:"Name...",value:newName,autofocus:"true"});
+    ni.addEventListener("input",e=>{setNewName(e.target.value);});
+    ni.addEventListener("keydown",e=>{if(e.key==="Enter")doAdd();});
+    setTimeout(()=>ni.focus(),10);
+    addingPanel=h("div",{style:{display:"flex",gap:"8px",marginBottom:"10px"}},ni,
+      h("button",{style:{...mkBtn(a,aT),borderRadius:"8px"},onClick:doAdd},"✓")
+    );
+  }
+
+  return h("div",{},
+    h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"10px"}},
+      h("div",{style:{fontWeight:"700",fontSize:"15px",color:a}},title),
+      h("button",{style:{background:a,color:aT,border:"none",borderRadius:"8px",padding:"6px 14px",fontSize:"13px",fontWeight:"800",cursor:"pointer"},
+        onClick(){setAdding(!adding);}},adding?"✕ Cancel":"+ Add")
+    ),
+    addingPanel,
+    ...rows,
+    !items.length?h("div",{style:{textAlign:"center",color:s.txt2,padding:"20px 0",fontSize:"13px"}},"No items yet."):null
+  );
+}
+
+// ─── ITEM FORM ───────────────────────────────────────────────────────────────
+function buildItemForm(initial,s){
+  const a=s.a, aT=s.aT;
+  const isNew=initial==null;
+  let f=isNew?{name:"",category:state.categories[0]||"",section:state.sections[0]||"",price:0,notes:"",order:999}:{...initial};
+
+  function field(label,key,type="text"){
+    const inp=h("input",{type,value:String(f[key]||""),style:mkInp(s)});
+    inp.addEventListener("input",e=>{f={...f,[key]:e.target.value};});
+    return h("div",{style:{display:"flex",flexDirection:"column",gap:"3px",marginBottom:"9px"}},
+      h("label",{style:{fontSize:"11px",fontWeight:"700",color:"#888",letterSpacing:"0.5px",textTransform:"uppercase"}},label),
+      inp);
+  }
+  function fsel(label,key,opts){
+    const sel=h("select",{style:mkInp(s)},...opts.map(o=>{const opt=h("option",{value:o},o);if(f[key]===o)opt.selected=true;return opt;}));
+    sel.addEventListener("change",e=>{f={...f,[key]:e.target.value};});
+    return h("div",{style:{display:"flex",flexDirection:"column",gap:"3px",marginBottom:"9px"}},
+      h("label",{style:{fontSize:"11px",fontWeight:"700",color:"#888",letterSpacing:"0.5px",textTransform:"uppercase"}},label),
+      sel);
+  }
+
+  return h("div",{style:{background:s.bg2,border:`1.5px solid ${a}33`,borderRadius:"14px",padding:"18px",marginBottom:"16px"}},
+    field("Item Name","name"),
+    field("Price (GC)","price","number"),
+    fsel("Category","category",state.categories),
+    fsel("Section","section",state.sections),
+    field("Display Order","order","number"),
+    field("Notes (optional)","notes"),
+    h("div",{style:{display:"flex",gap:"8px",marginTop:"10px"}},
+      h("button",{style:{...mkBtn(a,aT),flex:"1",borderRadius:"10px",height:"42px",fontSize:"14px",fontWeight:"800",width:"auto"},
+        onClick(){
+          if(isNew){
+            const maxOrder=Math.max(0,...state.items.filter(i=>i.category===f.category).map(i=>i.order));
+            state.items=[...state.items,{...f,id:genId(),stock:0,order:maxOrder+1,price:Number(f.price)||0}];
+            setToast("Item added!");
+          }else{
+            state.items=state.items.map(i=>i.id===initial.id?{...i,...f,price:Number(f.price)||0}:i);
+            setToast("Saved!");
+          }
+          state.editItem=null;render();
+        }},"Save Item"),
+      h("button",{style:{flex:"0.5",borderRadius:"9px",height:"42px",fontSize:"14px",fontWeight:"700",background:"transparent",color:a,border:`1.5px solid ${a}44`,cursor:"pointer"},
+        onClick(){state.editItem=null;render();}},"Cancel")
+    )
+  );
+}
+
+// ─── MAIN APP ────────────────────────────────────────────────────────────────
+function buildApp(){
+  const s=S();
+  const a=s.a, aT=s.aT;
+
+  const PAGES=[
+    {id:"inventory",icon:"📦",label:"Inventory"},
+    {id:"stocklist",icon:"📋",label:"Stock"},
+    {id:"quick",    icon:"⚡",label:"Quick"},
+    {id:"history",  icon:"📊",label:"History"},
+    {id:"manage",   icon:"🗂",label:"Items"},
+    {id:"cats",     icon:"📁",label:"Cats"},
+    {id:"secs",     icon:"🏷",label:"Secs"},
+    {id:"settings", icon:"⚙️",label:"Settings"},
+  ];
+
+  // Apply bg to body
+  document.body.style.background=s.bg0;
+  document.body.style.color=s.txt;
+  const scrollStyle=document.getElementById("_scrollstyle")||document.createElement("style");
+  scrollStyle.id="_scrollstyle";
+  scrollStyle.textContent=`
+    ::-webkit-scrollbar-track{background:${s.bg0};}
+    ::-webkit-scrollbar-thumb{background:${a}44;}
+    select option{background:${s.bg2};color:${s.txt};}
+    input[type=radio]{accent-color:${a};}
+  `;
+  document.head.appendChild(scrollStyle);
+
+  // ─── HEADER ──────────────────────────────────────────────────────────────
+  const header=h("div",{style:{background:s.bg1,borderBottom:`1px solid ${a}22`,padding:"13px 16px",position:"sticky",top:"0",zIndex:"60",display:"flex",alignItems:"center",justifyContent:"space-between"}},
+    h("div",{},
+      h("div",{style:{fontSize:"19px",fontWeight:"700",color:a,letterSpacing:"1px"}},"MM2 Stock Manager"),
+      h("div",{style:{fontSize:"10px",color:s.txt2,letterSpacing:"1.5px",textTransform:"uppercase"}},"Murder Mystery 2")
+    ),
+    h("div",{style:{background:a+"18",color:a,border:`1px solid ${a}33`,borderRadius:"7px",padding:"4px 10px",fontSize:"12px",fontWeight:"700"}},state.items.length+" items")
+  );
+
+  // ─── SEARCH ──────────────────────────────────────────────────────────────
+  let searchBar=null;
+  if(state.page==="inventory"){
+    const si=h("input",{placeholder:"🔍 Search items...",value:state.search,style:{...mkInp(s),fontSize:"14px",padding:"9px 13px"}});
+    si.addEventListener("input",e=>{
+      state.search=e.target.value;
+      if(state.search){
+        const found=state.items.find(i=>i.name.toLowerCase().includes(state.search.toLowerCase()));
+        if(found){
+          state.invTab=found.category;
+          setTimeout(()=>{const el=document.getElementById("item_"+found.id);if(el)el.scrollIntoView({behavior:"smooth",block:"center"});},120);
+        }
+      }
+      render();
+    });
+    searchBar=h("div",{style:{position:"sticky",top:"61px",zIndex:"50",background:s.bg0,padding:"8px 14px",borderBottom:`1px solid ${a}11`}},si);
+  }
+
+  // ─── NAV TABS (top scrollable) ────────────────────────────────────────────
+  const topPx=state.page==="inventory"?"109px":"61px";
+  const navTabs=h("div",{style:{position:"sticky",top:topPx,zIndex:"49",background:s.bg0,padding:"8px 14px 4px",borderBottom:`1px solid ${a}11`,display:"flex",gap:"4px",overflowX:"auto",WebkitOverflowScrolling:"touch"}},
+    ...PAGES.map(p=>h("button",{
+      style:{padding:"7px 13px",borderRadius:"8px",border:"none",cursor:"pointer",whiteSpace:"nowrap",fontSize:"12px",fontWeight:"700",flexShrink:"0",background:state.page===p.id?a:s.bg2,color:state.page===p.id?aT:s.txt2,letterSpacing:"0.4px"},
+      onClick(){state.page=p.id;render();}
+    },p.icon+" "+p.label))
+  );
+
+  // ─── PAGE CONTENT ─────────────────────────────────────────────────────────
+  let content=[];
+
+  // INVENTORY
+  if(state.page==="inventory"){
+    // Category tabs
+    const catTabs=h("div",{style:{display:"flex",gap:"5px",marginBottom:"12px",overflowX:"auto",WebkitOverflowScrolling:"touch"}},
+      ...state.categories.map(c=>h("button",{
+        style:{flexShrink:"0",padding:"8px 14px",borderRadius:"9px",cursor:"pointer",fontSize:"13px",fontWeight:"700",border:`1.5px solid ${state.invTab===c?a:a+"33"}`,background:state.invTab===c?a:"transparent",color:state.invTab===c?aT:a+"99"},
+        onClick(){state.invTab=c;render();}
+      },c))
+    );
+    content.push(catTabs);
+
+    if(state.invTab){
+      const tabItems=state.items
+        .filter(i=>i.category===state.invTab&&(!state.search||i.name.toLowerCase().includes(state.search.toLowerCase())))
+        .sort((a,b)=>a.order-b.order);
+
+      if(tabItems.length===0)
+        content.push(h("div",{style:{textAlign:"center",color:s.txt2,padding:"40px",fontSize:"14px"}},"No items in this category."));
+      else
+        tabItems.forEach(item=>{
+          const wrap=h("div",{id:"item_"+item.id},buildItemCard(item,s,state._editingCardId,state._editDraft));
+          content.push(wrap);
+        });
+    }else{
+      content.push(h("div",{style:{textAlign:"center",color:s.txt2,padding:"40px"}},"No categories yet. Add one in the Cats tab."));
+    }
+
+    // Sticky update btn
+    content.push(h("div",{style:{position:"sticky",bottom:"75px",padding:"10px 0",background:`linear-gradient(transparent,${s.bg0} 55%)`,zIndex:"30"}},
+      h("button",{style:{...mkBtn(a,aT),width:"100%",borderRadius:"11px",height:"50px",fontSize:"16px",fontWeight:"800",letterSpacing:"1px",boxShadow:`0 4px 24px ${a}44`},
+        onClick(){
+          const snap={};state.items.forEach(i=>{snap[i.id]=i.stock;});
+          const changes=state.items.filter(i=>(state.prevStocks[i.id]??null)!==null&&state.prevStocks[i.id]!==i.stock);
+          state.history=changes.map(i=>({id:i.id,name:i.name,prev:state.prevStocks[i.id],curr:i.stock}));
+          state.prevStocks=snap;
+          state.stockText=generateStockList(state.items,state.sections,state.sectionSort);
+          state.page="stocklist";
+          setToast("Stock list updated!");
+        }},"▶ UPDATE STOCK LIST")
+    ));
+  }
+
+  // STOCK LIST
+  else if(state.page==="stocklist"){
+    const txt=state.stockText||generateStockList(state.items,state.sections,state.sectionSort);
+    const ta=h("textarea",{style:{...mkInp(s),height:"400px",fontFamily:"monospace",fontSize:"13px",lineHeight:"1.75",resize:"vertical"}},txt);
+    ta.value=txt;
+    ta.addEventListener("input",e=>{state.stockText=e.target.value;});
+    content.push(h("div",{style:{fontSize:"13px",color:s.txt2,marginBottom:"8px"}},"Your formatted stock list — edit freely:"));
+    content.push(ta);
+    content.push(h("button",{style:{...mkBtn(a,aT),width:"100%",borderRadius:"11px",height:"48px",fontSize:"15px",fontWeight:"800",marginTop:"10px"},
+      onClick(){
+        navigator.clipboard.writeText(state.stockText||generateStockList(state.items,state.sections,state.sectionSort));
+        setToast("Copied to clipboard!");
+      }},"📋 COPY STOCK LIST"));
+
+    if(state.history.length){
+      content.push(h("div",{style:{marginTop:"20px"}},
+        h("div",{style:{fontWeight:"700",color:a,marginBottom:"10px",fontSize:"15px"}},"📊 Last Update Changes"),
+        ...state.history.map(h2=>
+          h("div",{style:{background:s.bg2,border:`1px solid ${s.bdr}`,borderRadius:"10px",padding:"10px 14px",marginBottom:"8px"}},
+            h("div",{style:{fontWeight:"700",color:a}},h2.name),
+            h("div",{style:{fontSize:"13px",color:s.txt2,marginTop:"3px"}},
+              "Prev: ",h("b",{style:{color:s.txt}},String(h2.prev))," → Now: ",
+              h("b",{style:{color:a}},String(h2.curr))," ",
+              h("span",{style:{color:h2.curr>h2.prev?"#6eff9a":"#ff6e6e",fontWeight:"800"}},(h2.curr>h2.prev?"+":"")+String(h2.curr-h2.prev))
+            )
+          )
+        )
+      ));
+    }
+  }
+
+  // QUICK UPDATE
+  else if(state.page==="quick"){
+    content.push(h("div",{style:{fontWeight:"700",color:a,fontSize:"17px",marginBottom:"12px"}},"⚡ Quick Update"));
+    const qi=h("input",{placeholder:"Search item name...",value:state.quickSearch,style:{...mkInp(s),marginBottom:"14px"},autofocus:"true"});
+    qi.addEventListener("input",e=>{
+      state.quickSearch=e.target.value;
+      if(!state.quickSearch){state.quickItem=null;}
+      else{
+        const found=state.items.find(i=>i.name.toLowerCase().includes(state.quickSearch.toLowerCase()));
+        state.quickItem=found||null;
+        if(found)state.quickVal=found.stock;
+      }
+      render();
+    });
+    setTimeout(()=>qi.focus(),10);
+    content.push(qi);
+
+    if(state.quickItem){
+      const qi2=state.quickItem;
+      const numInp=h("input",{type:"number",value:String(state.quickVal),style:{...mkInp(s),width:"80px",textAlign:"center",fontSize:"22px",fontWeight:"700"}});
+      numInp.addEventListener("input",e=>{state.quickVal=Math.max(0,+e.target.value||0);});
+      content.push(h("div",{style:{background:s.bg2,border:`1.5px solid ${a}44`,borderRadius:"14px",padding:"20px"}},
+        h("div",{style:{fontWeight:"700",color:a,fontSize:"20px",marginBottom:"3px"}},qi2.name),
+        h("div",{style:{fontSize:"12px",color:s.txt2,marginBottom:"14px"}},qi2.category+" · "+qi2.section+" · GC "+qi2.price),
+        h("div",{style:{fontSize:"14px",color:s.txt2,marginBottom:"10px"}},"Current Stock: ",h("b",{style:{color:a}},String(qi2.stock))),
+        h("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"16px"}},
+          h("button",{style:{...mkBtn(a,aT),width:"50px",height:"50px"},onClick(){state.quickVal=Math.max(0,state.quickVal-1);render();}},"−"),
+          numInp,
+          h("button",{style:{...mkBtn(a,aT),width:"50px",height:"50px"},onClick(){state.quickVal++;render();}},"+")
+        ),
+        h("button",{style:{...mkBtn(a,aT),width:"100%",borderRadius:"11px",height:"46px",fontSize:"15px",fontWeight:"800"},
+          onClick(){
+            state.items=state.items.map(i=>i.id===qi2.id?{...i,stock:state.quickVal}:i);
+            setToast(qi2.name+" → x"+state.quickVal);
+            state.quickSearch="";state.quickItem=null;
+            render();
+          }},"✓ SAVE")
+      ));
+    }else if(state.quickSearch){
+      content.push(h("div",{style:{textAlign:"center",color:s.txt2,padding:"30px"}},"No item found."));
+    }
+  }
+
+  // HISTORY
+  else if(state.page==="history"){
+    content.push(h("div",{style:{fontWeight:"700",color:a,fontSize:"17px",marginBottom:"12px"}},"📊 Stock Change History"));
+    if(!state.history.length){
+      content.push(h("div",{style:{textAlign:"center",color:s.txt2,padding:"40px"}},"No history yet. Update your stock list first."));
+    }else{
+      state.history.forEach(h2=>{
+        content.push(h("div",{style:{background:s.bg2,border:`1px solid ${s.bdr}`,borderRadius:"12px",padding:"13px 15px",marginBottom:"10px"}},
+          h("div",{style:{fontWeight:"700",color:a,fontSize:"15px",marginBottom:"5px"}},h2.name),
+          h("div",{style:{display:"flex",gap:"20px",fontSize:"14px",flexWrap:"wrap"}},
+            h("div",{},h("span",{style:{color:s.txt2}},"Previous: "),h("b",{style:{color:s.txt}},String(h2.prev))),
+            h("div",{},h("span",{style:{color:s.txt2}},"Current: "),h("b",{style:{color:a}},String(h2.curr))),
+            h("div",{style:{color:h2.curr>h2.prev?"#6eff9a":"#ff6e6e",fontWeight:"800"}},(h2.curr>h2.prev?"+":"")+String(h2.curr-h2.prev))
+          )
+        ));
+      });
+    }
+  }
+
+  // MANAGE ITEMS
+  else if(state.page==="manage"){
+    content.push(h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}},
+      h("div",{style:{fontWeight:"700",color:a,fontSize:"17px"}},"🗂 Manage Items"),
+      h("button",{style:{...mkBtn(a,aT),width:"auto",borderRadius:"9px",padding:"0 16px",height:"38px",fontSize:"13px"},
+        onClick(){state.editItem="new";render();}},"+ Add Item")
+    ));
+
+    if(state.editItem){
+      content.push(buildItemForm(state.editItem==="new"?null:state.editItem,s));
+    }
+
+    state.categories.forEach(cat=>{
+      const catItems=state.items.filter(i=>i.category===cat).sort((a,b)=>a.order-b.order);
+      const open=!state.collapsed[cat];
+      content.push(h("div",{style:{marginBottom:"10px"}},
+        h("button",{style:{width:"100%",background:s.bg2,border:`1.5px solid ${s.bdr}`,borderRadius:"10px",padding:"10px 14px",color:a,fontWeight:"700",fontSize:"14px",textAlign:"left",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"},
+          onClick(){state.collapsed={...state.collapsed,[cat]:!state.collapsed[cat]};render();}},
+          h("span",{},cat),h("span",{style:{color:s.txt2,fontSize:"13px"}},catItems.length+" items "+(open?"▲":"▼"))
+        ),
+        ...(open?catItems.map(item=>
+          h("div",{style:{background:s.bg1,border:`1px solid ${s.bdr}`,borderRadius:"8px",padding:"9px 13px",marginTop:"4px",display:"flex",alignItems:"center",justifyContent:"space-between"}},
+            h("div",{style:{flex:"1",minWidth:"0"}},
+              h("div",{style:{fontWeight:"700",color:a,fontSize:"14px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},item.name),
+              h("div",{style:{fontSize:"12px",color:s.txt2}},item.section+" · GC "+item.price+" · x"+item.stock)
+            ),
+            h("div",{style:{display:"flex",gap:"6px",flexShrink:"0"}},
+              h("button",{style:{background:a+"22",color:a,border:"none",borderRadius:"7px",padding:"5px 11px",cursor:"pointer",fontWeight:"700",fontSize:"12px"},
+                onClick(){state.editItem=item;render();}},"Edit"),
+              h("button",{style:{background:"#ff6e6e22",color:"#ff6e6e",border:"none",borderRadius:"7px",padding:"5px 9px",cursor:"pointer",fontWeight:"700",fontSize:"12px"},
+                onClick(){if(!confirm("Delete this item?"))return;state.items=state.items.filter(i=>i.id!==item.id);setToast("Item deleted.");}},"✕")
+            )
+          )
+        ):[])
+      ));
+    });
+  }
+
+  // CATEGORIES
+  else if(state.page==="cats"){
+    content.push(buildListEditor("📁 Category Manager",state.categories,"cats",s));
+  }
+
+  // SECTIONS
+  else if(state.page==="secs"){
+    content.push(buildListEditor("🏷 Section Manager",state.sections,"secs",s));
+    content.push(h("div",{style:{marginTop:"20px",borderTop:`1px solid ${s.bdr}`,paddingTop:"16px"}},
+      h("div",{style:{fontWeight:"700",color:a,fontSize:"15px",marginBottom:"12px"}},"⬆ Sort Settings per Section"),
+      ...state.sections.map(sec=>{
+        const cur=state.sectionSort[sec]||"manual";
+        const opts=[
+          {val:"manual",label:"Manual (drag order)"},
+          {val:"priceHL",label:"Price: High → Low"},
+          {val:"priceLH",label:"Price: Low → High"},
+          {val:"az",label:"Alphabetical A → Z"},
+          {val:"za",label:"Alphabetical Z → A"},
+        ];
+        return h("div",{style:{background:s.bg2,border:`1px solid ${s.bdr}`,borderRadius:"10px",padding:"12px 14px",marginBottom:"10px"}},
+          h("div",{style:{fontWeight:"700",color:a,marginBottom:"8px",fontSize:"14px"}},sec),
+          ...opts.map(o=>{
+            const rb=h("input",{type:"radio",name:"sort_"+sec,style:{width:"16px",height:"16px"}});
+            rb.checked=cur===o.val;
+            rb.addEventListener("change",()=>{state.sectionSort={...state.sectionSort,[sec]:o.val};render();});
+            return h("label",{style:{display:"flex",alignItems:"center",gap:"9px",marginBottom:"6px",cursor:"pointer",fontSize:"14px",color:s.txt}},rb,o.label);
+          })
+        );
+      })
+    ));
+  }
+
+  // SETTINGS
+  else if(state.page==="settings"){
+    content.push(h("div",{style:{fontWeight:"700",color:a,fontSize:"17px",marginBottom:"16px"}},"⚙️ Settings"));
+
+    // Theme mode
+    content.push(h("div",{style:{background:s.bg2,border:`1px solid ${s.bdr}`,borderRadius:"12px",padding:"14px 16px",marginBottom:"14px"}},
+      h("div",{style:{fontWeight:"700",color:a,marginBottom:"12px",fontSize:"14px"}},"🌙 Theme Mode"),
+      ...[{val:true,label:"Dark Mode"},{val:false,label:"Light Mode"}].map(m=>{
+        const rb=h("input",{type:"radio",name:"thememode",style:{width:"17px",height:"17px"}});
+        rb.checked=state.dark===m.val;
+        rb.addEventListener("change",()=>{state.dark=m.val;render();});
+        return h("label",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"8px",cursor:"pointer",fontSize:"15px",color:s.txt}},rb,m.label);
+      })
+    ));
+
+    // Color palette
+    content.push(h("div",{style:{background:s.bg2,border:`1px solid ${s.bdr}`,borderRadius:"12px",padding:"14px 16px",marginBottom:"14px"}},
+      h("div",{style:{fontWeight:"700",color:a,marginBottom:"12px",fontSize:"14px"}},"🎨 Theme Color"),
+      ...Object.entries(PALETTES).map(([key,pal])=>{
+        const rb=h("input",{type:"radio",name:"themecolor",style:{width:"17px",height:"17px"}});
+        rb.checked=state.theme===key;
+        rb.style.accentColor=pal.accent;
+        rb.addEventListener("change",()=>{state.theme=key;render();});
+        return h("label",{style:{display:"flex",alignItems:"center",gap:"12px",marginBottom:"10px",cursor:"pointer"}},
+          rb,
+          h("div",{style:{width:"20px",height:"20px",borderRadius:"50%",background:pal.accent,flexShrink:"0"}}),
+          h("span",{style:{fontSize:"15px",color:s.txt,fontWeight:state.theme===key?"700":"400"}},pal.name),
+          state.theme===key?h("span",{style:{fontSize:"11px",background:pal.accent,color:pal.accentText,borderRadius:"5px",padding:"2px 8px",fontWeight:"800"}},"Active"):null
+        );
+      })
+    ));
+
+    // Stats
+    content.push(h("div",{style:{background:s.bg2,border:`1px solid ${s.bdr}`,borderRadius:"12px",padding:"14px 16px",marginBottom:"14px"}},
+      h("div",{style:{fontWeight:"700",color:a,marginBottom:"10px",fontSize:"14px"}},"📈 Stats"),
+      ...[
+        ["Total Items",state.items.length],
+        ["Categories",state.categories.length],
+        ["Sections",state.sections.length],
+        ["Total Stock",state.items.reduce((acc,i)=>acc+i.stock,0)],
+      ].map(([k,v])=>h("div",{style:{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${s.bdr}`,fontSize:"14px"}},
+        h("span",{style:{color:s.txt2}},k),h("span",{style:{fontWeight:"700",color:a}},String(v))
+      ))
+    ));
+
+    // Reset
+    content.push(h("button",{style:{width:"100%",padding:"12px 0",borderRadius:"10px",background:"transparent",color:"#ff6e6e",border:"1.5px solid #ff6e6e44",cursor:"pointer",fontWeight:"800",fontSize:"14px"},
+      onClick(){
+        if(!confirm("Reset ALL data to defaults? This cannot be undone."))return;
+        state.items=[...DEFAULT_ITEMS];state.categories=[...DEFAULT_CATEGORIES];
+        state.sections=[...DEFAULT_SECTIONS];state.sectionSort={};
+        setToast("Data reset to defaults.");
+      }},"⚠ Reset All Data"));
+  }
+
+  // ─── BOTTOM NAV ──────────────────────────────────────────────────────────
+  const bottomNav=h("div",{style:{position:"fixed",bottom:"0",left:"0",right:"0",background:s.bg1,borderTop:`1px solid ${a}22`,display:"flex",zIndex:"60",overflowX:"auto"}},
+    ...PAGES.map(p=>h("button",{
+      style:{flex:"1 0 auto",minWidth:"40px",padding:"10px 4px 6px",border:"none",background:"transparent",cursor:"pointer",fontSize:"18px",display:"flex",flexDirection:"column",alignItems:"center",gap:"1px",opacity:state.page===p.id?"1":"0.32",borderTop:state.page===p.id?`2px solid ${a}`:"2px solid transparent"},
+      onClick(){state.page=p.id;render();}
+    },h("span",{},p.icon),h("span",{style:{fontSize:"8px",fontWeight:"700",color:state.page===p.id?a:s.txt2,letterSpacing:"0.3px",textTransform:"uppercase"}},p.label)))
+  );
+
+  const pageContent=h("div",{style:{padding:"14px 14px 0"}},...content);
+
+  const root=h("div",{},header,searchBar,navTabs,pageContent,bottomNav);
+  if(state.toast)root.appendChild(buildToast(s));
+  return root;
+}
+
+render();
+</script>
+</body>
+</html>
