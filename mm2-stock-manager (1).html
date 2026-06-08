@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>MM2 Stock Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Rajdhani',sans-serif;min-height:100vh;padding-bottom:90px;}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-thumb{border-radius:4px;}
+input[type=number]::-webkit-inner-spin-button{opacity:.3;}
+button,input,select,textarea{font-family:'Rajdhani',sans-serif;}
+button{cursor:pointer;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ─── DEFAULTS ────────────────────────────────────────────────────────────────
+const DEFAULT_CATEGORIES=["Season 1","Classic","Holiday"];
+const DEFAULT_SECTIONS=["Low","Tier 1 Low Godlies","Sets","Chromas"];
+const DEFAULT_ITEMS=[
+  {id:"s1_1",name:"Harvester",   category:"Season 1",section:"Low",              price:225,notes:"",order:1,stock:0},
+  {id:"s1_2",name:"Icepiercer", category:"Season 1",section:"Low",              price:165,notes:"",order:2,stock:0},
+  {id:"s1_3",name:"Bat",        category:"Season 1",section:"Low",              price:180,notes:"",order:3,stock:0},
+  {id:"s1_4",name:"Elderwood",  category:"Season 1",section:"Tier 1 Low Godlies",price:450,notes:"",order:4,stock:0},
+  {id:"s1_5",name:"Icebreaker", category:"Season 1",section:"Tier 1 Low Godlies",price:500,notes:"",order:5,stock:0},
+  {id:"cl_1",name:"Corrupt",    category:"Classic", section:"Low",              price:200,notes:"",order:1,stock:0},
+  {id:"cl_2",name:"Ghostblade", category:"Classic", section:"Low",              price:175,notes:"",order:2,stock:0},
+  {id:"cl_3",name:"Darkblade",  category:"Classic", section:"Tier 1 Low Godlies",price:480,notes:"",order:3,stock:0},
+  {id:"cl_4",name:"Luger",      category:"Classic", section:"Sets",             price:350,notes:"",order:4,stock:0},
+  {id:"cl_5",name:"Chroma Luger",category:"Classic",section:"Chromas",          price:900,notes:"",order:5,stock:0},
+  {id:"ho_1",name:"Pumpkin",    category:"Holiday", section:"Low",              price:190,notes:"",order:1,stock:0},
+  {id:"ho_2",name:"Candy Cane", category:"Holiday", section:"Low",              price:160,notes:"",order:2,stock:0},
+  {id:"ho_3",name:"Holiday Scythe",category:"Holiday",section:"Tier 1 Low Godlies",price:520,notes:"",order:3,stock:0},
+  {id:"ho_4",name:"Chroma Holiday Scythe",category:"Holiday",section:"Chromas",price:950,notes:"",order:4,stock:0},
+];
+
+const PALETTES={
+  yellow:{name:"🟡 Yellow",accent:"#e2ff6e",accentText:"#1a1a0e"},
+  blue:  {name:"🔵 Blue",  accent:"#6eb4ff",accentText:"#0a0f1a"},
+  green: {name:"🟢 Green", accent:"#6effa0",accentText:"#0a1a10"},
+  red:   {name:"🔴 Red",   accent:"#ff6e6e",accentText:"#1a0a0a"},
+  purple:{name:"🟣 Purple",accent:"#c06eff",accentText:"#100a1a"},
+  orange:{name:"🟠 Orange",accent:"#ffaa6e",accentText:"#1a0f0a"},
+  gray:  {name:"⚫ Gray",  accent:"#c8c8c8",accentText:"#0f0f0f"},
+};
+
+const BOLD_MAP={A:"𝐀",B:"𝐁",C:"𝐂",D:"𝐃",E:"𝐄",F:"𝐅",G:"𝐆",H:"𝐇",I:"𝐈",J:"𝐉",K:"𝐊",L:"𝐋",M:"𝐌",N:"𝐍",O:"𝐎",P:"𝐏",Q:"𝐐",R:"𝐑",S:"𝐒",T:"𝐓",U:"𝐔",V:"𝐕",W:"𝐖",X:"𝐗",Y:"𝐘",Z:"𝐙",a:"𝐚",b:"𝐛",c:"𝐜",d:"𝐝",e:"𝐞",f:"𝐟",g:"𝐠",h:"𝐡",i:"𝐢",j:"𝐣",k:"𝐤",l:"𝐥",m:"𝐦",n:"𝐧",o:"𝐨",p:"𝐩",q:"𝐪",r:"𝐫",s:"𝐬",t:"𝐭",u:"𝐮",v:"𝐯",w:"𝐰",x:"𝐱",y:"𝐲",z:"𝐳","0":"𝟎","1":"𝟏","2":"𝟐","3":"𝟑","4":"𝟒","5":"𝟓","6":"𝟔","7":"𝟕","8":"𝟖","9":"𝟗"};
+function bold(str){return str.split("").map(c=>BOLD_MAP[c]||c).join("");}
+
+// ─── STORAGE ─────────────────────────────────────────────────────────────────
+function lsGet(k,fb){try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch{return fb;}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
+function genId(){return"i_"+Math.random().toString(36).slice(2,9);}
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+const ST={
+  items:      lsGet("mm2_items_v3",DEFAULT_ITEMS),
+  categories: lsGet("mm2_cats_v3",DEFAULT_CATEGORIES),
+  sections:   lsGet("mm2_secs_v3",DEFAULT_SECTIONS),
+  sectionSort:lsGet("mm2_sort_v3",{}),
+  theme:      lsGet("mm2_theme","yellow"),
+  dark:       lsGet("mm2_dark",true),
+  page:       "inventory",
+  invTab:     null,
+  search:     "",
+  stockText:  "",
+  prevStocks: {},
+  history:    [],
+  toast:      "",toastTimer:null,
+  editItemId: null,   // null | "new" | item.id
+  editDraft:  {},
+  quickSearch:"",quickVal:0,
+  dragId:     null,
+  collapsed:  {},
+  drag:{active:false,id:null,originY:0,currentY:0,ghost:null,placeholder:null,startOrder:null},
+  // list editor state — simple, no closures
+  catAdding:false, catNewName:"",
+  secAdding:false, secNewName:"",
+  catRenamingIdx:null, catRenameVal:"",
+  secRenamingIdx:null, secRenameVal:"",
+  cardEditId: null, cardEditDraft:{},
+};
+if(!ST.invTab||!ST.categories.includes(ST.invTab))ST.invTab=ST.categories[0]||null;
+
+// ─── THEME ───────────────────────────────────────────────────────────────────
+function theme(){
+  const dark=ST.dark;
+  return{
+    bg0:dark?"#0b0b08":"#f5f5ee",
+    bg1:dark?"#141410":"#ebebdf",
+    bg2:dark?"#1c1c14":"#e0e0d2",
+    bg3:dark?"#252518":"#d4d4c4",
+    txt:dark?"#f0f0e0":"#1a1a10",
+    txt2:dark?"#999990":"#666655",
+    a:PALETTES[ST.theme].accent,
+    aT:PALETTES[ST.theme].accentText,
+    bdr:PALETTES[ST.theme].accent+(dark?"22":"44"),
+  };
+}
+
+// ─── PERSIST ─────────────────────────────────────────────────────────────────
+function persist(){
+  lsSet("mm2_items_v3",ST.items);
+  lsSet("mm2_cats_v3",ST.categories);
+  lsSet("mm2_secs_v3",ST.sections);
+  lsSet("mm2_sort_v3",ST.sectionSort);
+  lsSet("mm2_theme",ST.theme);
+  lsSet("mm2_dark",ST.dark);
+}
+
+// ─── TOAST ───────────────────────────────────────────────────────────────────
+function toast(msg){
+  ST.toast=msg;
+  if(ST.toastTimer)clearTimeout(ST.toastTimer);
+  ST.toastTimer=setTimeout(()=>{ST.toast="";render();},2500);
+}
+
+// ─── SORT ────────────────────────────────────────────────────────────────────
+function sortItems(arr,method){
+  const a=[...arr];
+  if(method==="priceHL")return a.sort((x,y)=>y.price-x.price);
+  if(method==="priceLH")return a.sort((x,y)=>x.price-y.price);
+  if(method==="az")return a.sort((x,y)=>x.name.localeCompare(y.name));
+  if(method==="za")return a.sort((x,y)=>y.name.localeCompare(x.name));
+  return a.sort((x,y)=>x.order-y.order);
+}
+
+// ─── STOCK LIST ──────────────────────────────────────────────────────────────
+function genStockList(){
+  const hdr="𝗙𝗢𝗥 𝗦𝗔𝗟𝗘 MM2 ITEMS❗\n𝗚𝗢𝗗𝗟𝗜𝗘𝗦 𝗙𝗢𝗥 𝗚𝗖𝗔𝗦𝗛\n[ 𝐋𝐎𝐀𝐃 : 𝐀𝐃𝐃 30% ]\n@ me for faster notice\n\nx0 = NO STOCK\nItem [Price] x = Quantity\n";
+  const ftr="\nPM / DM for direct notice\nWtu mm / mw (ADMODS)";
+  let body="";
+  for(const sec of ST.sections){
+    const method=ST.sectionSort[sec]||"manual";
+    const si=sortItems(ST.items.filter(i=>i.section===sec),method);
+    if(!si.length)continue;
+    body+=`\n${bold(sec.toUpperCase())}\n\n`;
+    for(const it of si)body+=`${it.name} [${it.price}] x${it.stock}\n`;
+  }
+  return hdr+body+ftr;
+}
+
+// ─── CSS HELPERS ─────────────────────────────────────────────────────────────
+function css(obj){return Object.entries(obj).map(([k,v])=>`${k.replace(/([A-Z])/g,m=>"-"+m.toLowerCase())}:${v}`).join(";");}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+function render(){
+  persist();
+  document.getElementById("app").innerHTML=buildHTML();
+  bindEvents();
+}
+
+// ─── BUILD HTML ──────────────────────────────────────────────────────────────
+function buildHTML(){
+  const T=theme();
+  document.body.style.cssText=`background:${T.bg0};color:${T.txt};font-family:'Rajdhani',sans-serif;min-height:100vh;padding-bottom:90px;`;
+
+  const PAGES=[
+    {id:"inventory",icon:"📦",label:"Inventory"},
+    {id:"stocklist",icon:"📋",label:"Stock"},
+    {id:"quick",    icon:"⚡",label:"Quick"},
+    {id:"history",  icon:"📊",label:"History"},
+    {id:"manage",   icon:"🗂",label:"Items"},
+    {id:"cats",     icon:"📁",label:"Cats"},
+    {id:"secs",     icon:"🏷",label:"Secs"},
+    {id:"settings", icon:"⚙️",label:"Settings"},
+  ];
+
+  // HEADER
+  const header=`<div style="${css({background:T.bg1,borderBottom:`1px solid ${T.a}22`,padding:"13px 16px",position:"sticky",top:"0",zIndex:"60",display:"flex",alignItems:"center",justifyContent:"space-between"})}">
+    <div>
+      <div style="font-size:19px;font-weight:700;color:${T.a};letter-spacing:1px;">MM2 Stock Manager</div>
+      <div style="font-size:10px;color:${T.txt2};letter-spacing:1.5px;text-transform:uppercase;">Murder Mystery 2</div>
+    </div>
+    <div style="background:${T.a}18;color:${T.a};border:1px solid ${T.a}33;border-radius:7px;padding:4px 10px;font-size:12px;font-weight:700;">${ST.items.length} items</div>
+  </div>`;
+
+  // SEARCH BAR (inventory only)
+  const searchBar=ST.page==="inventory"?`<div style="${css({position:"sticky",top:"61px",zIndex:"50",background:T.bg0,padding:"8px 14px",borderBottom:`1px solid ${T.a}11`})}">
+    <input id="search-input" placeholder="🔍 Search items..." value="${esc(ST.search)}" style="${css({background:T.bg1,color:T.txt,border:`1.5px solid ${T.bdr}`,borderRadius:"8px",padding:"9px 13px",fontSize:"14px",outline:"none",width:"100%",boxSizing:"border-box"})}"/>
+  </div>`:"";
+
+  // TOP NAV TABS
+  const topOffset=ST.page==="inventory"?"109px":"61px";
+  const navTabs=`<div style="${css({position:"sticky",top:topOffset,zIndex:"49",background:T.bg0,padding:"8px 14px 4px",borderBottom:`1px solid ${T.a}11`,display:"flex",gap:"4px",overflowX:"auto"})}">
+    ${PAGES.map(p=>`<button data-action="setpage" data-page="${p.id}" style="${css({padding:"7px 13px",borderRadius:"8px",border:"none",whiteSpace:"nowrap",fontSize:"12px",fontWeight:"700",flexShrink:"0",background:ST.page===p.id?T.a:T.bg2,color:ST.page===p.id?T.aT:T.txt2,letterSpacing:"0.4px",cursor:"pointer"})}">${p.icon} ${p.label}</button>`).join("")}
+  </div>`;
+
+  // PAGE CONTENT
+  let pageHTML="";
+
+  // ── INVENTORY ──────────────────────────────────────────────────────────────
+  if(ST.page==="inventory"){
+    const catTabs=`<div style="display:flex;gap:5px;margin-bottom:12px;overflow-x:auto;">
+      ${ST.categories.map(c=>`<button data-action="setinvtab" data-cat="${esc(c)}" style="${css({flexShrink:"0",padding:"8px 14px",borderRadius:"9px",fontSize:"13px",fontWeight:"700",border:`1.5px solid ${ST.invTab===c?T.a:T.a+"33"}`,background:ST.invTab===c?T.a:"transparent",color:ST.invTab===c?T.aT:T.a+"99",cursor:"pointer"})}">${esc(c)}</button>`).join("")}
+    </div>`;
+
+    let itemsHTML="";
+    if(ST.invTab){
+      const tabItems=ST.items
+        .filter(i=>i.category===ST.invTab&&(!ST.search||i.name.toLowerCase().includes(ST.search.toLowerCase())))
+        .sort((a,b)=>a.order-b.order);
+      if(!tabItems.length){
+        itemsHTML=`<div style="text-align:center;color:${T.txt2};padding:40px;font-size:14px;">No items in this category.</div>`;
+      }else{
+        itemsHTML=tabItems.map(item=>{
+          const isEdit=ST.cardEditId===item.id;
+          let editPanel="";
+          if(isEdit){
+            const d=ST.cardEditDraft;
+            editPanel=`<div style="margin-top:12px;border-top:1px solid ${T.bdr};padding-top:12px;">
+              ${fieldRow("Name",`<input data-cardedit="name" value="${esc(d.name||"")}" style="${inp(T)}"/>`)}
+              ${fieldRow("Price",`<input data-cardedit="price" type="number" value="${esc(d.price||0)}" style="${inp(T)}"/>`)}
+              ${fieldRow("Category",`<select data-cardedit="category" style="${inp(T)}">${ST.categories.map(c=>`<option value="${esc(c)}"${(d.category||"")==c?" selected":""}>${esc(c)}</option>`).join("")}</select>`)}
+              ${fieldRow("Section",`<select data-cardedit="section" style="${inp(T)}">${ST.sections.map(s=>`<option value="${esc(s)}"${(d.section||"")==s?" selected":""}>${esc(s)}</option>`).join("")}</select>`)}
+              ${fieldRow("Notes",`<input data-cardedit="notes" value="${esc(d.notes||"")}" style="${inp(T)}"/>`)}
+              <div style="display:flex;gap:8px;margin-top:8px;">
+                <button data-action="savecardedit" data-id="${item.id}" style="${css({flex:"1",borderRadius:"9px",height:"38px",fontSize:"13px",fontWeight:"800",background:T.a,color:T.aT,border:"none",cursor:"pointer"})}">Save Changes</button>
+                <button data-action="cancelcardedit" style="${css({flex:"1",borderRadius:"9px",height:"38px",fontSize:"13px",fontWeight:"700",background:"transparent",color:T.txt2,border:`1px solid ${T.bdr}`,cursor:"pointer"})}">Cancel</button>
+              </div>
+            </div>`;
+          }
+          return `<div id="item_${item.id}" data-itemid="${item.id}" data-order="${item.order}" style="${css({background:T.bg2,border:`1.5px solid ${T.bdr}`,borderRadius:"12px",padding:"12px 14px",marginBottom:"10px",touchAction:"none",userSelect:"none"})}">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <div class="drag-handle" data-itemid="${item.id}" style="${css({cursor:"grab",padding:"4px 8px 4px 0",color:T.txt2,fontSize:"20px",lineHeight:"1",flexShrink:"0",touchAction:"none",userSelect:"none",WebkitUserSelect:"none"})}" title="Hold to reorder">⠿</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;font-size:15px;color:${T.a};letter-spacing:0.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(item.name)}</div>
+                <div style="font-size:12px;color:${T.txt2};margin-top:2px;">${esc(item.section)} · <span style="color:${T.a}aa;">GC ${item.price}</span></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:0;">
+                <button data-action="stockdec" data-id="${item.id}" style="${stockBtnStyle(T)}">−</button>
+                <input data-action="stockinput" data-id="${item.id}" type="number" value="${item.stock}" style="${css({width:"50px",textAlign:"center",background:T.bg1,color:T.a,border:`1.5px solid ${T.a}44`,borderRadius:"8px",fontSize:"17px",fontWeight:"700",padding:"6px 0",outline:"none"})}"/>
+                <button data-action="stockinc" data-id="${item.id}" style="${stockBtnStyle(T)}">+</button>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:7px;">
+              <div style="font-size:12px;color:${T.txt2};">Stock: <span style="color:${T.a};font-weight:700;">${item.stock}</span>${item.notes?` <span style="color:${T.txt2}99;">${esc(item.notes)}</span>`:""}</div>
+              <button data-action="${isEdit?"cancelcardedit":"opencardedit"}" data-id="${item.id}" style="${css({background:"transparent",border:`1px solid ${T.a}44`,color:T.a,borderRadius:"7px",padding:"3px 10px",fontSize:"11px",fontWeight:"700",cursor:"pointer"})}">${isEdit?"✕ Close":"✎ Edit"}</button>
+            </div>
+            ${editPanel}
+          </div>`;
+        }).join("");
+      }
+    }else{
+      itemsHTML=`<div style="text-align:center;color:${T.txt2};padding:40px;">No categories yet. Add one in the Cats tab.</div>`;
+    }
+
+    const updateBtn=`<div style="${css({position:"sticky",bottom:"75px",padding:"10px 0",background:`linear-gradient(transparent,${T.bg0} 55%)`,zIndex:"30"})}">
+      <button data-action="updatestocklist" style="${css({width:"100%",borderRadius:"11px",height:"50px",fontSize:"16px",fontWeight:"800",letterSpacing:"1px",background:T.a,color:T.aT,border:"none",cursor:"pointer",boxShadow:`0 4px 24px ${T.a}44`})}">▶ UPDATE STOCK LIST</button>
+    </div>`;
+
+    pageHTML=catTabs+itemsHTML+updateBtn;
+  }
+
+  // ── STOCK LIST ─────────────────────────────────────────────────────────────
+  else if(ST.page==="stocklist"){
+    const txt=ST.stockText||genStockList();
+    const histHTML=ST.history.length?`<div style="margin-top:20px;">
+      <div style="font-weight:700;color:${T.a};margin-bottom:10px;font-size:15px;">📊 Last Update Changes</div>
+      ${ST.history.map(h=>`<div style="${css({background:T.bg2,border:`1px solid ${T.bdr}`,borderRadius:"10px",padding:"10px 14px",marginBottom:"8px"})}">
+        <div style="font-weight:700;color:${T.a};">${esc(h.name)}</div>
+        <div style="font-size:13px;color:${T.txt2};margin-top:3px;">Prev: <b style="color:${T.txt};">${h.prev}</b> → Now: <b style="color:${T.a};">${h.curr}</b> <span style="color:${h.curr>h.prev?"#6eff9a":"#ff6e6e"};font-weight:800;">${h.curr>h.prev?"+":""}${h.curr-h.prev}</span></div>
+      </div>`).join("")}
+    </div>`:"";
+    pageHTML=`<div style="font-size:13px;color:${T.txt2};margin-bottom:8px;">Your formatted stock list — edit freely:</div>
+    <textarea id="stocktext" style="${css({background:T.bg1,color:T.txt,border:`1.5px solid ${T.bdr}`,borderRadius:"8px",padding:"8px 10px",fontSize:"13px",outline:"none",width:"100%",boxSizing:"border-box",height:"400px",fontFamily:"monospace",lineHeight:"1.75",resize:"vertical"})}">${esc(txt)}</textarea>
+    <button data-action="copystocklist" style="${css({width:"100%",borderRadius:"11px",height:"48px",fontSize:"15px",fontWeight:"800",background:T.a,color:T.aT,border:"none",cursor:"pointer",marginTop:"10px"})}">📋 COPY STOCK LIST</button>
+    ${histHTML}`;
+  }
+
+  // ── QUICK UPDATE ───────────────────────────────────────────────────────────
+  else if(ST.page==="quick"){
+    let found=ST.quickSearch?ST.items.find(i=>i.name.toLowerCase().includes(ST.quickSearch.toLowerCase())):null;
+    let cardHTML="";
+    if(found){
+      cardHTML=`<div style="${css({background:T.bg2,border:`1.5px solid ${T.a}44`,borderRadius:"14px",padding:"20px"})}">
+        <div style="font-weight:700;color:${T.a};font-size:20px;margin-bottom:3px;">${esc(found.name)}</div>
+        <div style="font-size:12px;color:${T.txt2};margin-bottom:14px;">${esc(found.category)} · ${esc(found.section)} · GC ${found.price}</div>
+        <div style="font-size:14px;color:${T.txt2};margin-bottom:10px;">Current Stock: <b style="color:${T.a};">${found.stock}</b></div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+          <button data-action="quickdec" style="${css({width:"50px",height:"50px",borderRadius:"8px",background:T.a,color:T.aT,border:"none",fontSize:"22px",fontWeight:"900",cursor:"pointer"})}">−</button>
+          <input id="quickval" type="number" value="${ST.quickVal}" style="${css({background:T.bg1,color:T.txt,border:`1.5px solid ${T.bdr}`,borderRadius:"8px",padding:"8px",fontSize:"22px",fontWeight:"700",outline:"none",width:"80px",textAlign:"center",boxSizing:"border-box"})}"/>
+          <button data-action="quickinc" style="${css({width:"50px",height:"50px",borderRadius:"8px",background:T.a,color:T.aT,border:"none",fontSize:"22px",fontWeight:"900",cursor:"pointer"})}">+</button>
+        </div>
+        <button data-action="quicksave" data-id="${found.id}" data-name="${esc(found.name)}" style="${css({width:"100%",borderRadius:"11px",height:"46px",fontSize:"15px",fontWeight:"800",background:T.a,color:T.aT,border:"none",cursor:"pointer"})}">✓ SAVE</button>
+      </div>`;
+    }else if(ST.quickSearch){
+      cardHTML=`<div style="text-align:center;color:${T.txt2};padding:30px;">No item found.</div>`;
+    }
+    pageHTML=`<div style="font-weight:700;color:${T.a};font-size:17px;margin-bottom:12px;">⚡ Quick Update</div>
+    <input id="quicksearch" placeholder="Search item name..." value="${esc(ST.quickSearch)}" style="${css({background:T.bg1,color:T.txt,border:`1.5px solid ${T.bdr}`,borderRadius:"8px",padding:"8px 10px",fontSize:"14px",outline:"none",width:"100%",boxSizing:"border-box",marginBottom:"14px"})}"/>
+    ${cardHTML}`;
+  }
+
+  // ── HISTORY ────────────────────────────────────────────────────────────────
+  else if(ST.page==="history"){
+    pageHTML=`<div style="font-weight:700;color:${T.a};font-size:17px;margin-bottom:12px;">📊 Stock Change History</div>`;
+    if(!ST.history.length){
+      pageHTML+=`<div style="text-align:center;color:${T.txt2};padding:40px;">No history yet. Update your stock list first.</div>`;
+    }else{
+      pageHTML+=ST.history.map(h=>`<div style="${css({background:T.bg2,border:`1px solid ${T.bdr}`,borderRadius:"12px",padding:"13px 15px",marginBottom:"10px"})}">
+        <div style="font-weight:700;color:${T.a};font-size:15px;margin-bottom:5px;">${esc(h.name)}</div>
+        <div style="display:flex;gap:20px;font-size:14px;flex-wrap:wrap;">
+          <div><span style="color:${T.txt2};">Previous: </span><b style="color:${T.txt};">${h.prev}</b></div>
+          <div><span style="color:${T.txt2};">Current: </span><b style="color:${T.a};">${h.curr}</b></div>
+          <div style="color:${h.curr>h.prev?"#6eff9a":"#ff6e6e"};font-weight:800;">${h.curr>h.prev?"+":""}${h.curr-h.prev}</div>
+        </div>
+      </div>`).join("");
+    }
+  }
+
+  // ── MANAGE ITEMS ───────────────────────────────────────────────────────────
+  else if(ST.page==="manage"){
+    let editFormHTML="";
+    if(ST.editItemId){
+      const d=ST.editDraft;
+      const isNew=ST.editItemId==="new";
+      editFormHTML=`<div style="${css({background:T.bg2,border:`1.5px solid ${T.a}33`,borderRadius:"14px",padding:"18px",marginBottom:"16px"})}">
+        <div style="font-weight:700;color:${T.a};margin-bottom:12px;">${isNew?"Add New Item":"Edit Item"}</div>
+        ${fieldRow("Item Name",`<input data-manedit="name" value="${esc(d.name||"")}" style="${inp(T)}"/>`)}
+        ${fieldRow("Price (GC)",`<input data-manedit="price" type="number" value="${esc(d.price||0)}" style="${inp(T)}"/>`)}
+        ${fieldRow("Category",`<select data-manedit="category" style="${inp(T)}">${ST.categories.map(c=>`<option value="${esc(c)}"${(d.category||"")==c?" selected":""}>${esc(c)}</option>`).join("")}</select>`)}
+        ${fieldRow("Section",`<select data-manedit="section" style="${inp(T)}">${ST.sections.map(s=>`<option value="${esc(s)}"${(d.section||"")==s?" selected":""}>${esc(s)}</option>`).join("")}</select>`)}
+        ${fieldRow("Notes",`<input data-manedit="notes" value="${esc(d.notes||"")}" style="${inp(T)}"/>`)}
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button data-action="savemanedit" style="${css({flex:"1",borderRadius:"10px",height:"42px",fontSize:"14px",fontWeight:"800",background:T.a,color:T.aT,border:"none",cursor:"pointer"})}">Save Item</button>
+          <button data-action="cancelmanedit" style="${css({flex:"0.5",borderRadius:"9px",height:"42px",fontSize:"14px",fontWeight:"700",background:"transparent",color:T.a,border:`1.5px solid ${T.a}44`,cursor:"pointer"})}">Cancel</button>
+        </div>
+      </div>`;
+    }
+    const catListHTML=ST.categories.map(cat=>{
+      const catItems=ST.items.filter(i=>i.category===cat).sort((a,b)=>a.order-b.order);
+      const open=!ST.collapsed[cat];
+      return`<div style="margin-bottom:10px;">
+        <button data-action="togglecollapse" data-cat="${esc(cat)}" style="${css({width:"100%",background:T.bg2,border:`1.5px solid ${T.bdr}`,borderRadius:"10px",padding:"10px 14px",color:T.a,fontWeight:"700",fontSize:"14px",textAlign:"left",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"})}">${esc(cat)} <span style="color:${T.txt2};font-size:13px;">${catItems.length} items ${open?"▲":"▼"}</span></button>
+        ${open?catItems.map(item=>`<div style="${css({background:T.bg1,border:`1px solid ${T.bdr}`,borderRadius:"8px",padding:"9px 13px",marginTop:"4px",display:"flex",alignItems:"center",justifyContent:"space-between"})}">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:700;color:${T.a};font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(item.name)}</div>
+            <div style="font-size:12px;color:${T.txt2};">${esc(item.section)} · GC ${item.price} · x${item.stock}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <button data-action="edititem" data-id="${item.id}" style="${css({background:T.a+"22",color:T.a,border:"none",borderRadius:"7px",padding:"5px 11px",cursor:"pointer",fontWeight:"700",fontSize:"12px"})}">Edit</button>
+            <button data-action="deleteitem" data-id="${item.id}" style="${css({background:"#ff6e6e22",color:"#ff6e6e",border:"none",borderRadius:"7px",padding:"5px 9px",cursor:"pointer",fontWeight:"700",fontSize:"12px"})}">✕</button>
+          </div>
+        </div>`).join(""):""}
+      </div>`;
+    }).join("");
+    pageHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="font-weight:700;color:${T.a};font-size:17px;">🗂 Manage Items</div>
+      <button data-action="newitem" style="${css({background:T.a,color:T.aT,border:"none",borderRadius:"9px",padding:"0 16px",height:"38px",fontSize:"13px",fontWeight:"800",cursor:"pointer"})}">+ Add Item</button>
+    </div>
+    ${editFormHTML}${catListHTML}`;
+  }
+
+  // ── CATEGORIES ─────────────────────────────────────────────────────────────
+  else if(ST.page==="cats"){
+    pageHTML=buildListEditorHTML("cats",ST.categories,T);
+  }
+
+  // ── SECTIONS ───────────────────────────────────────────────────────────────
+  else if(ST.page==="secs"){
+    pageHTML=buildListEditorHTML("secs",ST.sections,T);
+    // Sort settings
+    pageHTML+=`<div style="margin-top:20px;border-top:1px solid ${T.bdr};padding-top:16px;">
+      <div style="font-weight:700;color:${T.a};font-size:15px;margin-bottom:12px;">⬆ Sort Settings per Section</div>
+      ${ST.sections.map(sec=>{
+        const cur=ST.sectionSort[sec]||"manual";
+        const opts=[["manual","Manual (drag order)"],["priceHL","Price: High → Low"],["priceLH","Price: Low → High"],["az","A → Z"],["za","Z → A"]];
+        return`<div style="${css({background:T.bg2,border:`1px solid ${T.bdr}`,borderRadius:"10px",padding:"12px 14px",marginBottom:"10px"})}">
+          <div style="font-weight:700;color:${T.a};margin-bottom:8px;font-size:14px;">${esc(sec)}</div>
+          ${opts.map(([val,lbl])=>`<label style="display:flex;align-items:center;gap:9px;margin-bottom:6px;cursor:pointer;font-size:14px;color:${T.txt};">
+            <input type="radio" data-action="setsort" data-sec="${esc(sec)}" data-val="${val}" ${cur===val?"checked":""} style="width:16px;height:16px;accent-color:${T.a};"/> ${lbl}
+          </label>`).join("")}
+        </div>`;
+      }).join("")}
+    </div>`;
+  }
+
+  // ── SETTINGS ───────────────────────────────────────────────────────────────
+  else if(ST.page==="settings"){
+    const modeBlock=`<div style="${css({background:T.bg2,border:`1px solid ${T.bdr}`,borderRadius:"12px",padding:"14px 16px",marginBottom:"14px"})}">
+      <div style="font-weight:700;color:${T.a};margin-bottom:12px;font-size:14px;">🌙 Theme Mode</div>
+      ${[{v:"true",l:"Dark Mode"},{v:"false",l:"Light Mode"}].map(m=>`<label style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer;font-size:15px;color:${T.txt};">
+        <input type="radio" data-action="setdark" data-val="${m.v}" ${String(ST.dark)===m.v?"checked":""} style="width:17px;height:17px;accent-color:${T.a};"/> ${m.l}
+      </label>`).join("")}
+    </div>`;
+    const palBlock=`<div style="${css({background:T.bg2,border:`1px solid ${T.bdr}`,borderRadius:"12px",padding:"14px 16px",marginBottom:"14px"})}">
+      <div style="font-weight:700;color:${T.a};margin-bottom:12px;font-size:14px;">🎨 Theme Color</div>
+      ${Object.entries(PALETTES).map(([k,p])=>`<label style="display:flex;align-items:center;gap:12px;margin-bottom:10px;cursor:pointer;">
+        <input type="radio" data-action="settheme" data-val="${k}" ${ST.theme===k?"checked":""} style="width:17px;height:17px;accent-color:${p.accent};"/>
+        <div style="width:20px;height:20px;border-radius:50%;background:${p.accent};flex-shrink:0;"></div>
+        <span style="font-size:15px;color:${T.txt};font-weight:${ST.theme===k?"700":"400"};">${p.name}</span>
+        ${ST.theme===k?`<span style="font-size:11px;background:${p.accent};color:${p.accentText};border-radius:5px;padding:2px 8px;font-weight:800;">Active</span>`:""}
+      </label>`).join("")}
+    </div>`;
+    const statsBlock=`<div style="${css({background:T.bg2,border:`1px solid ${T.bdr}`,borderRadius:"12px",padding:"14px 16px",marginBottom:"14px"})}">
+      <div style="font-weight:700;color:${T.a};margin-bottom:10px;font-size:14px;">📈 Stats</div>
+      ${[["Total Items",ST.items.length],["Categories",ST.categories.length],["Sections",ST.sections.length],["Total Stock",ST.items.reduce((s,i)=>s+i.stock,0)]].map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid ${T.bdr};font-size:14px;"><span style="color:${T.txt2};">${k}</span><span style="font-weight:700;color:${T.a};">${v}</span></div>`).join("")}
+    </div>`;
+    pageHTML=`<div style="font-weight:700;color:${T.a};font-size:17px;margin-bottom:16px;">⚙️ Settings</div>
+    ${modeBlock}${palBlock}${statsBlock}
+    <button data-action="resetdata" style="${css({width:"100%",padding:"12px 0",borderRadius:"10px",background:"transparent",color:"#ff6e6e",border:"1.5px solid #ff6e6e44",cursor:"pointer",fontWeight:"800",fontSize:"14px"})}">⚠ Reset All Data</button>`;
+  }
+
+  // BOTTOM NAV
+  const bottomNav=`<div style="${css({position:"fixed",bottom:"0",left:"0",right:"0",background:T.bg1,borderTop:`1px solid ${T.a}22`,display:"flex",zIndex:"60",overflowX:"auto"})}">
+    ${PAGES.map(p=>`<button data-action="setpage" data-page="${p.id}" style="${css({flex:"1 0 auto",minWidth:"40px",padding:"10px 4px 6px",border:"none",background:"transparent",cursor:"pointer",fontSize:"18px",display:"flex",flexDirection:"column",alignItems:"center",gap:"1px",opacity:ST.page===p.id?"1":"0.32",borderTop:ST.page===p.id?`2px solid ${T.a}`:"2px solid transparent"})}">
+      <span>${p.icon}</span><span style="font-size:8px;font-weight:700;color:${ST.page===p.id?T.a:T.txt2};letter-spacing:0.3px;text-transform:uppercase;">${p.label}</span>
+    </button>`).join("")}
+  </div>`;
+
+  // TOAST
+  const toastHTML=ST.toast?`<div style="${css({position:"fixed",bottom:"88px",left:"50%",transform:"translateX(-50%)",background:T.a,color:"#111",padding:"10px 24px",borderRadius:"10px",fontWeight:"800",fontSize:"14px",zIndex:"9999",whiteSpace:"nowrap",boxShadow:"0 4px 24px #0009",letterSpacing:"0.3px"})}">${esc(ST.toast)}</div>`:"";
+
+  // STYLE
+  const styleTag=`<style>::-webkit-scrollbar-thumb{background:${T.a}44;}::-webkit-scrollbar-track{background:${T.bg0};}select option{background:${T.bg2};color:${T.txt};}</style>`;
+
+  return`${styleTag}${header}${searchBar}${navTabs}<div style="padding:14px 14px 0;">${pageHTML}</div>${bottomNav}${toastHTML}`;
+}
+
+// ─── LIST EDITOR HTML ─────────────────────────────────────────────────────────
+// Completely standalone — no closures, no drag interference, pure data-action
+function buildListEditorHTML(type,items,T){
+  const isCat=type==="cats";
+  const title=isCat?"📁 Category Manager":"🏷 Section Manager";
+  const adding=isCat?ST.catAdding:ST.secAdding;
+  const newName=isCat?ST.catNewName:ST.secNewName;
+  const renamingIdx=isCat?ST.catRenamingIdx:ST.secRenamingIdx;
+  const renameVal=isCat?ST.catRenameVal:ST.secRenameVal;
+
+  const addPanel=adding?`<div style="display:flex;gap:8px;margin-bottom:10px;">
+    <input id="${type}-newinput" placeholder="Name..." value="${esc(newName)}" style="${inp(T)}" autocomplete="off"/>
+    <button data-action="${type}-addconfirm" style="${css({width:"38px",height:"38px",borderRadius:"8px",background:T.a,color:T.aT,border:"none",fontSize:"18px",fontWeight:"900",cursor:"pointer",flexShrink:"0"})}">✓</button>
+  </div>`:"";
+
+  const rows=items.map((item,idx)=>{
+    const isRenaming=renamingIdx===idx;
+    if(isRenaming){
+      return`<div style="${css({background:T.bg2,border:`1px solid ${T.bdr}`,borderRadius:"9px",padding:"10px 12px",marginBottom:"6px",display:"flex",alignItems:"center",gap:"8px"})}">
+        <input id="${type}-renameinput" value="${esc(renameVal)}" style="${css({background:T.bg1,color:T.txt,border:`1.5px solid ${T.bdr}`,borderRadius:"8px",padding:"4px 8px",fontSize:"14px",outline:"none",flex:"1",boxSizing:"border-box"})}" autocomplete="off"/>
+        <button data-action="${type}-renameconfirm" data-idx="${idx}" style="${css({width:"30px",height:"30px",borderRadius:"6px",background:T.a,color:T.aT,border:"none",fontSize:"14px",cursor:"pointer",flexShrink:"0"})}">✓</button>
+        <button data-action="${type}-renamecancel" style="${css({background:"transparent",border:"none",color:T.txt2,cursor:"pointer",fontSize:"16px",padding:"0 4px",flexShrink:"0"})}">✕</button>
+      </div>`;
+    }
+    return`<div style="${css({background:T.bg2,border:`1px solid ${T.bdr}`,borderRadius:"9px",padding:"10px 12px",marginBottom:"6px",display:"flex",alignItems:"center",gap:"8px"})}">
+      <span style="color:${T.txt2};font-size:16px;">⠿</span>
+      <span style="flex:1;font-weight:600;color:${T.txt};font-size:14px;">${esc(item)}</span>
+      <button data-action="${type}-rename" data-idx="${idx}" data-name="${esc(item)}" style="${css({background:"transparent",border:`1px solid ${T.a}44`,color:T.a,borderRadius:"6px",padding:"3px 10px",cursor:"pointer",fontSize:"12px",fontWeight:"700"})}">Rename</button>
+      <button data-action="${type}-delete" data-idx="${idx}" data-name="${esc(item)}" style="${css({background:"transparent",border:"1px solid #ff6e6e44",color:"#ff6e6e",borderRadius:"6px",padding:"3px 8px",cursor:"pointer",fontSize:"12px",fontWeight:"700"})}">✕</button>
+    </div>`;
+  }).join("");
+
+  const emptyMsg=!items.length?`<div style="text-align:center;color:${T.txt2};padding:20px 0;font-size:13px;">No items yet.</div>`:"";
+
+  return`<div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="font-weight:700;font-size:15px;color:${T.a};">${title}</div>
+      <button data-action="${type}-toggleadd" style="${css({background:T.a,color:T.aT,border:"none",borderRadius:"8px",padding:"6px 14px",fontSize:"13px",fontWeight:"800",cursor:"pointer"})}">${adding?"✕ Cancel":"+ Add"}</button>
+    </div>
+    ${addPanel}${rows}${emptyMsg}
+  </div>`;
+}
+
+// ─── FIELD ROW HELPER ────────────────────────────────────────────────────────
+function fieldRow(label,inputHTML){
+  return`<div style="display:flex;flex-direction:column;gap:3px;margin-bottom:9px;">
+    <label style="font-size:11px;font-weight:700;color:#888;letter-spacing:0.5px;text-transform:uppercase;">${label}</label>
+    ${inputHTML}
+  </div>`;
+}
+function inp(T){return css({background:T.bg1,color:T.txt,border:`1.5px solid ${T.bdr}`,borderRadius:"8px",padding:"8px 10px",fontSize:"14px",outline:"none",width:"100%",boxSizing:"border-box"});}
+function stockBtnStyle(T){return css({width:"38px",height:"38px",borderRadius:"8px",background:T.a,color:T.aT,border:"none",fontSize:"20px",fontWeight:"900",cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:"0"});}
+
+// ─── BIND EVENTS ─────────────────────────────────────────────────────────────
+// Single delegated listener — no drag interference, no closures
+function bindEvents(){
+  const app=document.getElementById("app");
+
+  // Focus helpers (after render)
+  const catInput=document.getElementById("cats-newinput");
+  if(catInput){catInput.focus();catInput.setSelectionRange(catInput.value.length,catInput.value.length);}
+  const secInput=document.getElementById("secs-newinput");
+  if(secInput){secInput.focus();secInput.setSelectionRange(secInput.value.length,secInput.value.length);}
+  const catRenIn=document.getElementById("cats-renameinput");
+  if(catRenIn){catRenIn.focus();catRenIn.setSelectionRange(catRenIn.value.length,catRenIn.value.length);}
+  const secRenIn=document.getElementById("secs-renameinput");
+  if(secRenIn){secRenIn.focus();secRenIn.setSelectionRange(secRenIn.value.length,secRenIn.value.length);}
+
+  // Live-update state for text inputs without re-rendering
+  app.addEventListener("input",e=>{
+    const t=e.target;
+    // List editor new-name inputs
+    if(t.id==="cats-newinput"){ST.catNewName=t.value;return;}
+    if(t.id==="secs-newinput"){ST.secNewName=t.value;return;}
+    if(t.id==="cats-renameinput"){ST.catRenameVal=t.value;return;}
+    if(t.id==="secs-renameinput"){ST.secRenameVal=t.value;return;}
+    // Search
+    if(t.id==="search-input"){
+      ST.search=t.value;
+      if(ST.search){
+        const found=ST.items.find(i=>i.name.toLowerCase().includes(ST.search.toLowerCase()));
+        if(found)ST.invTab=found.category;
+      }
+      render();return;
+    }
+    // Quick search
+    if(t.id==="quicksearch"){
+      ST.quickSearch=t.value;
+      const found=ST.quickSearch?ST.items.find(i=>i.name.toLowerCase().includes(ST.quickSearch.toLowerCase())):null;
+      if(found)ST.quickVal=found.stock;
+      render();return;
+    }
+    if(t.id==="quickval"){ST.quickVal=Math.max(0,+t.value||0);return;}
+    // Stock input on inventory card
+    if(t.dataset.action==="stockinput"){
+      const n=Math.max(0,parseInt(t.value)||0);
+      ST.items=ST.items.map(i=>i.id===t.dataset.id?{...i,stock:n}:i);
+      persist();return;
+    }
+    // Card edit draft
+    if(t.dataset.cardedit){ST.cardEditDraft={...ST.cardEditDraft,[t.dataset.cardedit]:t.value};return;}
+    // Manage item edit draft
+    if(t.dataset.manedit){ST.editDraft={...ST.editDraft,[t.dataset.manedit]:t.value};return;}
+  });
+
+  // Enter key for list editor inputs
+  app.addEventListener("keydown",e=>{
+    if(e.key!=="Enter")return;
+    if(e.target.id==="cats-newinput")catsAddConfirm();
+    if(e.target.id==="secs-newinput")secsAddConfirm();
+    if(e.target.id==="cats-renameinput"){
+      const idx=ST.catRenamingIdx;
+      if(idx!==null)catsRenameConfirm(idx);
+    }
+    if(e.target.id==="secs-renameinput"){
+      const idx=ST.secRenamingIdx;
+      if(idx!==null)secsRenameConfirm(idx);
+    }
+  });
+
+  // Click delegation
+  app.addEventListener("click",e=>{
+    const btn=e.target.closest("[data-action]");
+    if(!btn)return;
+    const action=btn.dataset.action;
+
+    // ── Navigation ──
+    if(action==="setpage"){ST.page=btn.dataset.page;render();return;}
+    if(action==="setinvtab"){ST.invTab=btn.dataset.cat;render();return;}
+    if(action==="togglecollapse"){ST.collapsed={...ST.collapsed,[btn.dataset.cat]:!ST.collapsed[btn.dataset.cat]};render();return;}
+
+    // ── Stock ──
+    if(action==="stockdec"){ST.items=ST.items.map(i=>i.id===btn.dataset.id?{...i,stock:Math.max(0,i.stock-1)}:i);render();return;}
+    if(action==="stockinc"){ST.items=ST.items.map(i=>i.id===btn.dataset.id?{...i,stock:i.stock+1}:i);render();return;}
+
+    // ── Card edit ──
+    if(action==="opencardedit"){
+      const item=ST.items.find(i=>i.id===btn.dataset.id);
+      if(!item)return;
+      ST.cardEditId=item.id;
+      ST.cardEditDraft={name:item.name,price:item.price,category:item.category,section:item.section,notes:item.notes||""};
+      render();return;
+    }
+    if(action==="cancelcardedit"){ST.cardEditId=null;render();return;}
+    if(action==="savecardedit"){
+      const d=ST.cardEditDraft;
+      ST.items=ST.items.map(i=>i.id===btn.dataset.id?{...i,...d,price:Number(d.price)||0}:i);
+      ST.cardEditId=null;toast("Saved!");render();return;
+    }
+
+    // ── Manage items ──
+    if(action==="newitem"){
+      ST.editItemId="new";
+      ST.editDraft={name:"",category:ST.categories[0]||"",section:ST.sections[0]||"",price:0,notes:""};
+      render();return;
+    }
+    if(action==="edititem"){
+      const item=ST.items.find(i=>i.id===btn.dataset.id);
+      if(!item)return;
+      ST.editItemId=item.id;
+      ST.editDraft={name:item.name,price:item.price,category:item.category,section:item.section,notes:item.notes||""};
+      render();return;
+    }
+    if(action==="cancelmanedit"){ST.editItemId=null;render();return;}
+    if(action==="savemanedit"){
+      const d=ST.editDraft;
+      if(ST.editItemId==="new"){
+        const maxOrder=Math.max(0,...ST.items.filter(i=>i.category===d.category).map(i=>i.order));
+        ST.items=[...ST.items,{...d,id:genId(),stock:0,order:maxOrder+1,price:Number(d.price)||0}];
+        toast("Item added!");
+      }else{
+        ST.items=ST.items.map(i=>i.id===ST.editItemId?{...i,...d,price:Number(d.price)||0}:i);
+        toast("Saved!");
+      }
+      ST.editItemId=null;render();return;
+    }
+    if(action==="deleteitem"){
+      if(!confirm("Delete this item?"))return;
+      ST.items=ST.items.filter(i=>i.id!==btn.dataset.id);
+      toast("Item deleted.");render();return;
+    }
+
+    // ── CATEGORIES ─────────────────────────────────────────────────────────
+    if(action==="cats-toggleadd"){ST.catAdding=!ST.catAdding;ST.catNewName="";render();return;}
+    if(action==="cats-addconfirm"){catsAddConfirm();return;}
+    if(action==="cats-rename"){
+      ST.catRenamingIdx=parseInt(btn.dataset.idx);
+      ST.catRenameVal=btn.dataset.name;
+      render();return;
+    }
+    if(action==="cats-renamecancel"){ST.catRenamingIdx=null;render();return;}
+    if(action==="cats-renameconfirm"){catsRenameConfirm(parseInt(btn.dataset.idx));return;}
+    if(action==="cats-delete"){
+      const idx=parseInt(btn.dataset.idx);
+      const name=ST.categories[idx];
+      if(!confirm(`Delete category "${name}"?\nItems inside will become uncategorized.`))return;
+      ST.categories=ST.categories.filter((_,i)=>i!==idx);
+      ST.items=ST.items.map(i=>i.category===name?{...i,category:"Uncategorized"}:i);
+      if(ST.invTab===name)ST.invTab=ST.categories[0]||null;
+      toast(`"${name}" deleted.`);render();return;
+    }
+
+    // ── SECTIONS ───────────────────────────────────────────────────────────
+    if(action==="secs-toggleadd"){ST.secAdding=!ST.secAdding;ST.secNewName="";render();return;}
+    if(action==="secs-addconfirm"){secsAddConfirm();return;}
+    if(action==="secs-rename"){
+      ST.secRenamingIdx=parseInt(btn.dataset.idx);
+      ST.secRenameVal=btn.dataset.name;
+      render();return;
+    }
+    if(action==="secs-renamecancel"){ST.secRenamingIdx=null;render();return;}
+    if(action==="secs-renameconfirm"){secsRenameConfirm(parseInt(btn.dataset.idx));return;}
+    if(action==="secs-delete"){
+      const idx=parseInt(btn.dataset.idx);
+      const name=ST.sections[idx];
+      if(!confirm(`Delete section "${name}"?\nItems inside will become unsectioned.`))return;
+      ST.sections=ST.sections.filter((_,i)=>i!==idx);
+      ST.items=ST.items.map(i=>i.section===name?{...i,section:"Unsorted"}:i);
+      toast(`"${name}" deleted.`);render();return;
+    }
+
+    // ── Settings ──
+    if(action==="setdark"){ST.dark=btn.dataset.val==="true";render();return;}
+    if(action==="settheme"){ST.theme=btn.dataset.val;render();return;}
+    if(action==="setsort"){ST.sectionSort={...ST.sectionSort,[btn.dataset.sec]:btn.dataset.val};render();return;}
+    if(action==="resetdata"){
+      if(!confirm("Reset ALL data to defaults? This cannot be undone."))return;
+      ST.items=[...DEFAULT_ITEMS];ST.categories=[...DEFAULT_CATEGORIES];
+      ST.sections=[...DEFAULT_SECTIONS];ST.sectionSort={};
+      ST.invTab=ST.categories[0];
+      toast("Data reset to defaults.");render();return;
+    }
+
+    // ── Stock list ──
+    if(action==="updatestocklist"){
+      const snap={};ST.items.forEach(i=>{snap[i.id]=i.stock;});
+      ST.history=ST.items.filter(i=>(ST.prevStocks[i.id]??null)!==null&&ST.prevStocks[i.id]!==i.stock).map(i=>({id:i.id,name:i.name,prev:ST.prevStocks[i.id],curr:i.stock}));
+      ST.prevStocks=snap;
+      ST.stockText=genStockList();
+      ST.page="stocklist";
+      toast("Stock list updated!");render();return;
+    }
+    if(action==="copystocklist"){
+      const txt=document.getElementById("stocktext")?.value||genStockList();
+      navigator.clipboard.writeText(txt);toast("Copied to clipboard!");render();return;
+    }
+
+    // ── Quick update ──
+    if(action==="quickdec"){ST.quickVal=Math.max(0,ST.quickVal-1);render();return;}
+    if(action==="quickinc"){ST.quickVal++;render();return;}
+    if(action==="quicksave"){
+      ST.items=ST.items.map(i=>i.id===btn.dataset.id?{...i,stock:ST.quickVal}:i);
+      toast(`${btn.dataset.name} → x${ST.quickVal}`);
+      ST.quickSearch="";ST.quickVal=0;
+      render();return;
+    }
+  });
+
+  // ── TOUCH DRAG-AND-DROP (iOS-safe, handle-based) ─────────────────────────
+  const D=ST.drag; // shorthand ref
+  let holdTimer=null;
+
+  function dragCleanup(){
+    if(D.ghost)D.ghost.remove();
+    if(D.placeholder){D.placeholder.remove();}
+    document.querySelectorAll("[data-itemid]").forEach(el=>{
+      el.style.opacity="";el.style.transform="";
+    });
+    D.active=false;D.id=null;D.ghost=null;D.placeholder=null;D.startOrder=null;
+  }
+
+  app.addEventListener("touchstart",e=>{
+    const handle=e.target.closest(".drag-handle");
+    if(!handle)return;
+    const itemId=handle.dataset.itemid;
+    if(!itemId)return;
+    const sourceEl=document.getElementById("item_"+itemId);
+    if(!sourceEl)return;
+    e.preventDefault();
+    const touch=e.touches[0];
+    D.originY=touch.clientY;
+    D.currentY=touch.clientY;
+    D.id=itemId;
+    // Create ghost (floating clone)
+    const rect=sourceEl.getBoundingClientRect();
+    const ghost=sourceEl.cloneNode(true);
+    ghost.style.cssText+=`;position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;
+      zIndex:9999;pointerEvents:none;opacity:0.92;boxShadow:0 8px 32px #0007;
+      transition:none;margin:0;borderRadius:12px;`;
+    document.body.appendChild(ghost);
+    D.ghost=ghost;
+    // Dim source
+    sourceEl.style.opacity="0.3";
+    // Create placeholder div same height
+    const ph=document.createElement("div");
+    ph.style.cssText=`height:${rect.height+10}px;margin-bottom:10px;border-radius:12px;
+      border:2px dashed ${PALETTES[ST.theme].accent}66;background:transparent;box-sizing:border-box;`;
+    sourceEl.parentNode.insertBefore(ph,sourceEl.nextSibling);
+    D.placeholder=ph;
+    sourceEl.style.display="none";
+    D.active=true;
+  },{passive:false});
+
+  app.addEventListener("touchmove",e=>{
+    if(!D.active||!D.ghost)return;
+    e.preventDefault();
+    const touch=e.touches[0];
+    const dy=touch.clientY-D.originY;
+    const rect0=D.ghost.getBoundingClientRect();
+    D.ghost.style.top=(parseFloat(D.ghost.style.top)+dy)+"px";
+    D.originY=touch.clientY;
+
+    // Find insertion position
+    const ph=D.placeholder;
+    const ghostMid=touch.clientY;
+    const items=Array.from(document.querySelectorAll("[data-itemid]"))
+      .filter(el=>el.id!=="item_"+D.id&&el.style.display!=="none");
+
+    let insertBefore=null;
+    for(const el of items){
+      const r=el.getBoundingClientRect();
+      if(ghostMid<r.top+r.height/2){insertBefore=el;break;}
+    }
+    const container=ph.parentNode;
+    if(insertBefore){
+      if(ph.nextSibling!==insertBefore)container.insertBefore(ph,insertBefore);
+    }else{
+      if(container.lastChild!==ph)container.appendChild(ph);
+    }
+  },{passive:false});
+
+  function onDragEnd(){
+    if(!D.active)return;
+    const ph=D.placeholder;
+    const sourceEl=document.getElementById("item_"+D.id);
+    if(sourceEl&&ph){
+      sourceEl.style.display="";
+      ph.parentNode.insertBefore(sourceEl,ph);
+    }
+    dragCleanup();
+    // Re-compute order for all visible items in this category
+    if(ST.invTab){
+      const cards=Array.from(document.querySelectorAll("[data-itemid]"));
+      const orderedIds=cards.map(c=>c.dataset.itemid).filter(Boolean);
+      let order=1;
+      const orderMap={};
+      orderedIds.forEach(id=>{orderMap[id]=order++;});
+      ST.items=ST.items.map(i=>i.category===ST.invTab&&orderMap[i.id]!==undefined?{...i,order:orderMap[i.id]}:i);
+      render();
+    }
+  }
+
+  app.addEventListener("touchend",onDragEnd,{passive:true});
+  app.addEventListener("touchcancel",dragCleanup,{passive:true});
+
+  // Preserve stock textarea edits
+  const ta=document.getElementById("stocktext");
+  if(ta)ta.addEventListener("input",e=>{ST.stockText=e.target.value;});
+}
+
+// ─── LIST EDITOR ACTIONS ─────────────────────────────────────────────────────
+function catsAddConfirm(){
+  const name=ST.catNewName.trim();
+  if(!name){toast("Enter a name first.");return;}
+  if(ST.categories.includes(name)){toast("Already exists.");return;}
+  ST.categories=[...ST.categories,name];
+  ST.catNewName="";ST.catAdding=false;
+  toast("Category added!");render();
+}
+function secsAddConfirm(){
+  const name=ST.secNewName.trim();
+  if(!name){toast("Enter a name first.");return;}
+  if(ST.sections.includes(name)){toast("Already exists.");return;}
+  ST.sections=[...ST.sections,name];
+  ST.secNewName="";ST.secAdding=false;
+  toast("Section added!");render();
+}
+function catsRenameConfirm(idx){
+  const name=ST.catRenameVal.trim();
+  if(!name)return;
+  const old=ST.categories[idx];
+  ST.categories=ST.categories.map((c,i)=>i===idx?name:c);
+  ST.items=ST.items.map(i=>i.category===old?{...i,category:name}:i);
+  if(ST.invTab===old)ST.invTab=name;
+  ST.catRenamingIdx=null;
+  toast(`Renamed to "${name}"`);render();
+}
+function secsRenameConfirm(idx){
+  const name=ST.secRenameVal.trim();
+  if(!name)return;
+  const old=ST.sections[idx];
+  ST.sections=ST.sections.map((s,i)=>i===idx?name:s);
+  ST.items=ST.items.map(i=>i.section===old?{...i,section:name}:i);
+  const ss={...ST.sectionSort};if(ss[old]!==undefined){ss[name]=ss[old];delete ss[old];}ST.sectionSort=ss;
+  ST.secRenamingIdx=null;
+  toast(`Renamed to "${name}"`);render();
+}
+
+render();
+</script>
+</body>
+</html>
